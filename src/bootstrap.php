@@ -2,6 +2,23 @@
 
 declare(strict_types=1);
 
+// Los diagnósticos de PHP van al log, NUNCA al cuerpo de la respuesta.
+//
+// Esto no es cosmética. Si PHP imprime un aviso, ese texto sale antes que
+// nada, las cabeceras se mandan implícitamente con 200 y text/html, y a
+// partir de ahí todos los header() y http_response_code() del código fallan:
+// el cliente recibe un 200 con HTML pegado delante del JSON, sea cual sea el
+// resultado real de la petición.
+//
+// Pasó de verdad: Vercel corre PHP 8.5, donde curl_close() está deprecada, y
+// un simple aviso de deprecación tumbó todas las rutas autenticadas mientras
+// /api/health seguía respondiendo bien.
+//
+// De paso deja de filtrarle al cliente rutas internas del servidor.
+ini_set('display_errors', '0');
+ini_set('log_errors', '1');
+error_reporting(E_ALL);
+
 // Autoloader propio en vez de Composer.
 //
 // El runtime de PHP en Vercel es comunitario (vercel-php) y su paso de

@@ -67,7 +67,11 @@ final class HttpClient
         $raw = curl_exec($handle);
         $error = curl_error($handle);
         $status = (int) curl_getinfo($handle, CURLINFO_RESPONSE_CODE);
-        curl_close($handle);
+
+        // No se llama a curl_close(): desde PHP 8.0 el handle es un objeto que
+        // se libera solo al salir del ámbito, la función no hace nada, y desde
+        // PHP 8.5 está deprecada. Como Vercel corre 8.5, llamarla imprimía un
+        // aviso en mitad de la respuesta y rompía todas las cabeceras.
 
         if ($raw === false) {
             throw new RuntimeException("Fallo la peticion a $url: $error");
