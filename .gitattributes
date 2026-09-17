@@ -1,0 +1,3 @@
+# El backend corre en Linux (Vercel). Se normaliza a LF en el repositorio para
+# que lo que se despliega sea idéntico se haya commiteado desde Windows o no.
+* text=auto eol=lf
