@@ -108,7 +108,7 @@ firma/verificacion de JWT. No necesita credenciales ni red.
 php tests/selftest.php
 ```
 
-Si `openssl_pkey_new` falla en Windows con un PHP portable, es que falta
+Si `openssl_pkey_new` falla en Windows, es que falta
 apuntar `OPENSSL_CONF` al `openssl.cnf` que viene en `extras/ssl/`.
 
 ## Endpoints

@@ -29,6 +29,11 @@ final class Catalog
             Field::string('nombre', required: true, nullable: false),
             Field::string('especie', required: true, nullable: false),
             Field::string('raza'),
+            // Opcional: hay gente que adopta y no sabe la fecha exacta. La app
+            // calcula la edad a partir de esto, y si falta no la muestra.
+            Field::timestamp('fechaNacimiento'),
+            // URL de la foto en Firebase Storage. El archivo lo sube la app
+            // directamente a Storage; aqui solo se guarda la direccion.
             Field::string('fotoUrl'),
             Field::string('notas'),
         ], defaultOrderBy: 'nombre');

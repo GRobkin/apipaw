@@ -186,6 +186,29 @@ check('aplica valores por defecto', function (): void {
     assertSame(null, $med['fechaFin']);
 });
 
+check('la mascota acepta fecha de nacimiento y la devuelve en ISO', function (): void {
+    $mascotas = Catalog::mascotas();
+
+    $data = $mascotas->forCreate([
+        'nombre' => 'Buddy',
+        'especie' => 'Perro',
+        'raza' => 'Golden Retriever',
+        'fechaNacimiento' => '2022-05-14T00:00:00.000Z',
+    ]);
+
+    assertTrue($data['fechaNacimiento'] instanceof DateTimeImmutable);
+
+    $json = $mascotas->toJson('buddy_123', Value::decodeFields(Value::encodeFields($data)));
+    assertSame('2022-05-14T00:00:00.000Z', $json['fechaNacimiento']);
+    assertSame(null, $json['fotoUrl'], 'los campos opcionales que no se envian quedan nulos');
+});
+
+check('la fecha de nacimiento es opcional', function (): void {
+    // Quien adopta no siempre la sabe, asi que crear sin ella tiene que valer.
+    $data = Catalog::mascotas()->forCreate(['nombre' => 'Luna', 'especie' => 'Gato']);
+    assertSame(null, $data['fechaNacimiento']);
+});
+
 check('PATCH solo toca los campos enviados', function (): void {
     $mascotas = Catalog::mascotas();
     $data = $mascotas->forUpdate(['notas' => 'Alergica al pollo']);

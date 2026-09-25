@@ -1,3 +1,8 @@
 /vendor/
 .env
 .vercel
+
+# Instrucciones de proyecto para Claude Code. No se versiona: el archivo real
+# vive en D:\Mobile\CLAUDE.md, fuera de los repos.
+CLAUDE.md
+.claude/
