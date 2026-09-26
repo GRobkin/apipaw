@@ -7,3 +7,4 @@
 CLAUDE.md
 .claude/
 cloudflare/.private-key.pem
+cloudflare/.wrangler/

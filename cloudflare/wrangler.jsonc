@@ -2,6 +2,7 @@
   "name": "pawlife-push-clock",
   "main": "src/index.js",
   "compatibility_date": "2026-09-26",
+  "workers_dev": false,
   "triggers": { "crons": ["*/5 * * * *"] },
   "vars": { "API_URL": "https://apipaw.vercel.app/api/internal/send-reminders" }
 }
