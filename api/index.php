@@ -52,6 +52,17 @@ try {
         ]);
     });
 
+    // Cloudflare firma cada llamada. La clave privada solo vive en el Worker;
+    // la API conserva la clave publica y las credenciales de Firebase.
+    $router->post('/api/internal/send-reminders', static function (Request $r): Response {
+        \PawLife\Notifications\CronSignature::verify($r);
+        $result = (new \PawLife\Notifications\PushDispatcher(
+            FirestoreClient::fromEnv(),
+            new \PawLife\Notifications\FcmSender(),
+        ))->dispatch(dryRun: $r->queryParam('dryRun') === '1');
+        return Response::ok($result);
+    });
+
     // El usuario se verifica una sola vez y solo cuando la ruta lo necesita,
     // para que /api/health siga respondiendo aunque el token sea invalido.
     $user = null;

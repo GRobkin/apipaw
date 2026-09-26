@@ -155,12 +155,39 @@ Web crea el perfil pero no registra push porque aun falta configurar VAPID.
 La app programa avisos locales en el dispositivo al sincronizar tareas,
 vacunas y medicamentos; no requiere un cron ni facturación. Los avisos que se
 creen o cambien en otro dispositivo se incorporan cuando la app vuelva a abrirse.
+
+### Push programado sin facturacion
+
+`cloudflare/` contiene un Worker con un cron cada cinco minutos. El Worker no
+lee Firestore ni conoce la clave de Firebase: firma una peticion corta a
+`POST /api/internal/send-reminders`. La API busca recordatorios no completados
+vencidos en las ultimas dos horas, envia FCM a dispositivos activos y guarda
+el estado por recordatorio, fecha y token en `notificaciones`. Un reclamo
+atomico reduce duplicados entre ejecuciones simultaneas. Los
+errores se reintentan hasta tres veces. Los avisos locales siguen siendo la
+fuente principal para horarios precisos; puede aparecer un duplicado entre
+aviso local y push si ambos canales entregan el mismo recordatorio.
+
+Para activar esta parte hace falta una cuenta gratuita de Cloudflare. Desde
+`cloudflare/`, iniciar sesion con `npx wrangler login`, cargar el contenido de
+`cloudflare/.private-key.pem` como secreto `PUSHPOLL_PRIVATE_KEY` con
+`npx wrangler secret put PUSHPOLL_PRIVATE_KEY` y ejecutar `npx wrangler deploy`.
+La clave privada fue generada localmente y esta excluida de Git; nunca debe
+subirse al repositorio ni copiarse al frontend. Su clave publica esta en
+`src/Notifications/push-public.pem` y permite a la API verificar cada llamada.
+No hay una variable de entorno nueva en Vercel. Antes de activar el cron se
+puede comprobar la ruta firmada con `?dryRun=1`, que solo cuenta candidatos y
+no envia mensajes. La recepcion real requiere abrir la app en Android/iOS,
+aceptar permisos y registrar un token FCM valido. Web sigue sin VAPID.
+
 `DELETE /api/me` elimina los datos planos, los subdocumentos heredados y la
 cuenta de Firebase Authentication. Backups y PITR no se activan porque requieren
 facturación; configurar una exportación manual si se necesita recuperación.
 
-Todas las rutas menos `/api/health` exigen
+Todas las rutas de usuario exigen
 `Authorization: Bearer <ID token de Firebase>`.
+La ruta interna de push exige una firma reciente del Worker y nunca acepta
+un token de usuario como sustituto.
 
 | Metodo | Ruta | Que hace |
 | --- | --- | --- |

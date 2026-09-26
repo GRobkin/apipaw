@@ -6,6 +6,8 @@ require dirname(__DIR__) . '/src/bootstrap.php';
 
 use PawLife\Firestore\Value;
 use PawLife\Auth\FirebaseAuthAdmin;
+use PawLife\Notifications\CronSignature;
+use PawLife\Notifications\PushDispatcher;
 use PawLife\Http\HttpException;
 use PawLife\Resources\Catalog;
 use PawLife\Resources\CareValidator;
@@ -83,6 +85,27 @@ check('cuenta eliminada, deshabilitada o sesion revocada no puede entrar', funct
     FirebaseAuthAdmin::assertLookupResult('uid', 200, [
         'users' => [['localId' => 'uid', 'validSince' => '200']],
     ]);
+});
+
+check('programador acepta solo firmas recientes y autenticas', function (): void {
+    $key = openssl_pkey_new(['private_key_bits' => 2048, 'private_key_type' => OPENSSL_KEYTYPE_RSA]);
+    assertTrue($key !== false);
+    $public = openssl_pkey_get_details($key)['key'];
+    $now = time();
+    $timestamp = (string) $now;
+    openssl_sign("POST\n/api/internal/send-reminders\n" . $timestamp, $signature, $key, OPENSSL_ALGO_SHA256);
+    $encoded = rtrim(strtr(base64_encode($signature), '+/', '-_'), '=');
+    assertTrue(CronSignature::valid($timestamp, $encoded, $public, $now));
+    assertTrue(!CronSignature::valid($timestamp, $encoded, $public, $now + 181));
+    assertTrue(!CronSignature::valid($timestamp, $encoded . 'x', $public, $now));
+});
+
+check('un aviso tiene id estable por dosis y dispositivo', function (): void {
+    $a = new DateTimeImmutable('2026-09-27T10:00:00Z');
+    $b = new DateTimeImmutable('2026-09-28T10:00:00Z');
+    assertSame(PushDispatcher::noticeId('r1', 'token1', $a), PushDispatcher::noticeId('r1', 'token1', $a));
+    assertTrue(PushDispatcher::noticeId('r1', 'token1', $a) !== PushDispatcher::noticeId('r1', 'token2', $a));
+    assertTrue(PushDispatcher::noticeId('r1', 'token1', $a) !== PushDispatcher::noticeId('r1', 'token1', $b));
 });
 
 function check(string $name, callable $fn): void

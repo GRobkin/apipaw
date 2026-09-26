@@ -151,6 +151,44 @@ final class FirestoreClient
     }
 
     /**
+     * Busca fechas en una ventana acotada. El indice simple de fecha de
+     * Firestore cubre esta consulta sin crear un indice compuesto adicional.
+     *
+     * @return list<array{id: string, data: array<string, mixed>}>
+     */
+    public function queryDateWindow(string $collection, string $field, \DateTimeImmutable $start, \DateTimeImmutable $end, int $max = 500): array
+    {
+        $query = [
+            'from' => [['collectionId' => $collection]],
+            'where' => ['compositeFilter' => [
+                'op' => 'AND',
+                'filters' => [
+                    ['fieldFilter' => ['field' => ['fieldPath' => $field], 'op' => 'GREATER_THAN_OR_EQUAL', 'value' => Value::encode($start)]],
+                    ['fieldFilter' => ['field' => ['fieldPath' => $field], 'op' => 'LESS_THAN_OR_EQUAL', 'value' => Value::encode($end)]],
+                ],
+            ]],
+            'orderBy' => [['field' => ['fieldPath' => $field], 'direction' => 'ASCENDING']],
+            'limit' => $max + 1,
+        ];
+        $url = self::BASE . '/projects/' . rawurlencode($this->projectId)
+            . '/databases/(default)/documents:runQuery';
+        $rows = $this->request('POST', $url, ['structuredQuery' => $query]) ?? [];
+        $documents = [];
+        foreach ($rows as $row) {
+            $document = is_array($row) ? ($row['document'] ?? null) : null;
+            if (!is_array($document)) continue;
+            $documents[] = [
+                'id' => self::idFromName((string) ($document['name'] ?? '')),
+                'data' => Value::decodeFields($document['fields'] ?? []),
+            ];
+        }
+        if (count($documents) > $max) {
+            throw new HttpException(503, 'Hay demasiados recordatorios pendientes para un ciclo.');
+        }
+        return $documents;
+    }
+
+    /**
      * @return array<string, mixed>|null  null si el documento no existe.
      */
     public function getDocument(string $documentPath): ?array
@@ -162,6 +200,17 @@ final class FirestoreClient
         }
 
         return Value::decodeFields($response['fields'] ?? []);
+    }
+
+    /** @return array{data: array<string, mixed>, updateTime: string}|null */
+    public function getDocumentVersioned(string $documentPath): ?array
+    {
+        $response = $this->request('GET', $this->documentsUrl($documentPath), allowNotFound: true);
+        if ($response === null) return null;
+        return [
+            'data' => Value::decodeFields($response['fields'] ?? []),
+            'updateTime' => (string) ($response['updateTime'] ?? ''),
+        ];
     }
 
     public function documentExists(string $documentPath): bool
@@ -201,7 +250,7 @@ final class FirestoreClient
      *
      * @return array{id: string, data: array<string, mixed>}
      */
-    public function patchDocument(string $documentPath, array $data): array
+    public function patchDocument(string $documentPath, array $data, ?string $expectedUpdateTime = null): array
     {
         $query = [];
         foreach (array_keys($data) as $field) {
@@ -209,7 +258,9 @@ final class FirestoreClient
         }
         // Exige que el documento ya exista: si no, un PATCH sobre un id
         // inventado lo crearia en silencio y el cliente creeria que edito algo.
-        $query[] = ['currentDocument.exists', 'true'];
+        $query[] = $expectedUpdateTime === null
+            ? ['currentDocument.exists', 'true']
+            : ['currentDocument.updateTime', $expectedUpdateTime];
 
         $response = $this->request(
             'PATCH',
@@ -298,6 +349,10 @@ final class FirestoreClient
 
         if ($status === 409) {
             throw new HttpException(409, 'Ya existe un documento con ese id.');
+        }
+
+        if ($status === 412) {
+            throw new HttpException(409, 'El documento cambio durante la operacion.');
         }
 
         if ($status === 400) {

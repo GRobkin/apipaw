@@ -24,6 +24,7 @@ final class AccessTokenProvider
 {
     public const FIRESTORE_SCOPE = 'https://www.googleapis.com/auth/datastore';
     public const AUTH_SCOPE = 'https://www.googleapis.com/auth/cloud-platform';
+    public const MESSAGING_SCOPE = 'https://www.googleapis.com/auth/firebase.messaging';
 
     /** Duracion que pedimos. Google devuelve como mucho una hora. */
     private const LIFETIME_SECONDS = 3600;
