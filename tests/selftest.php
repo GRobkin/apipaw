@@ -7,11 +7,63 @@ require dirname(__DIR__) . '/src/bootstrap.php';
 use PawLife\Firestore\Value;
 use PawLife\Http\HttpException;
 use PawLife\Resources\Catalog;
+use PawLife\Resources\CareValidator;
 use PawLife\Support\Json;
 use PawLife\Support\Jwt;
 
 $passed = 0;
 $failed = 0;
+
+check('perfil editable descarta email y privilegios', function (): void {
+    assertSame(['nombre' => 'Ana'], Catalog::perfilEditable()->forUpdate([
+        'nombre' => 'Ana', 'email' => 'otro@example.com',
+        'premium' => true, 'premiumHasta' => '2099-01-01',
+    ]));
+    try {
+        Catalog::perfilEditable()->forUpdate(['premium' => true]);
+        throw new RuntimeException('Acepto privilegios sin campos editables');
+    } catch (HttpException $e) {
+        assertSame(400, $e->status());
+    }
+});
+
+check('dispositivo exige token y valida plataforma en altas y cambios', function (): void {
+    foreach ([[], ['token' => '', 'plataforma' => 'android'], ['token' => 'abc', 'plataforma' => 'otra']] as $body) {
+        try {
+            Catalog::dispositivos()->forCreate($body);
+            throw new RuntimeException('Acepto un dispositivo invalido');
+        } catch (HttpException $e) {
+            assertSame(400, $e->status());
+        }
+    }
+    try {
+        Catalog::dispositivos()->forUpdate(['plataforma' => 'otra']);
+        throw new RuntimeException('Acepto una plataforma invalida');
+    } catch (HttpException $e) {
+        assertSame(400, $e->status());
+    }
+});
+
+check('rechaza fechas invertidas y horarios invalidos de cuidados', function (): void {
+    foreach ([
+        ['vacunas', [
+            'fechaAplicacion' => new DateTimeImmutable('2026-09-20'),
+            'proximaFecha' => new DateTimeImmutable('2026-09-19'),
+        ]],
+        ['medicamentos', [
+            'fechaInicio' => new DateTimeImmutable('2026-09-20'),
+            'fechaFin' => new DateTimeImmutable('2026-09-19'),
+            'horarios' => ['25:00'],
+        ]],
+    ] as [$resource, $data]) {
+        try {
+            CareValidator::check($resource, $data);
+            throw new RuntimeException('Acepto fechas u horarios invalidos');
+        } catch (HttpException $e) {
+            assertSame(400, $e->status());
+        }
+    }
+});
 
 function check(string $name, callable $fn): void
 {

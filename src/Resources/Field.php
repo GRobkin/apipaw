@@ -31,12 +31,18 @@ final class Field
         public readonly bool $required = false,
         public readonly mixed $default = null,
         public readonly bool $nullable = false,
+        public readonly ?array $allowedValues = null,
     ) {
     }
 
     public static function string(string $name, bool $required = false, bool $nullable = true): self
     {
         return new self($name, self::STRING, $required, null, $nullable);
+    }
+
+    public static function choice(string $name, array $values): self
+    {
+        return new self($name, self::STRING, true, null, false, $values);
     }
 
     public static function int(string $name, bool $required = false, ?int $default = null): self

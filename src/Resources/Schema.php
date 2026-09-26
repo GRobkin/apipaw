@@ -154,6 +154,9 @@ final class Schema
                 if ($text === '' && $field->required) {
                     throw new ValidationError('No puede estar vacio.');
                 }
+                if ($field->allowedValues !== null && !in_array($text, $field->allowedValues, true)) {
+                    throw new ValidationError('Valores permitidos: ' . implode(', ', $field->allowedValues) . '.');
+                }
 
                 return $text;
 

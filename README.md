@@ -4,7 +4,7 @@ Backend en PHP de PawLife, pensado para desplegarse en Vercel. Guarda los datos
 en Firestore y autentica con los ID token que emite Firebase Auth en la app
 Flutter.
 
-El cliente Flutter vive en `../flutter_application_1` y ya no habla con
+El cliente Flutter vive en `../PawLife` y ya no habla con
 Firestore directamente: todo pasa por esta API.
 
 ## Por que esta escrito asi
@@ -34,8 +34,8 @@ reglas**. El aislamiento pasa a depender de dos cosas:
 1. `Auth\FirebaseTokenVerifier` verifica la firma del ID token contra los
    certificados publicos de Google y comprueba emisor, audiencia y caducidad.
    De ahi sale el `uid`.
-2. Todas las rutas de Firestore se construyen como `users/{uid}/...` con ese
-   uid, nunca con algo que venga del cuerpo o de la URL.
+2. Las consultas a colecciones raíz filtran por `userId` obtenido de ese uid;
+   al acceder a un documento concreto se comprueba su propietario y mascota.
 
 Por eso `firestore.rules` pasa a denegar todo acceso directo desde clientes: si
 alguien sigue teniendo la config de Firebase de la app, no debe poder saltarse
@@ -113,6 +113,52 @@ apuntar `OPENSSL_CONF` al `openssl.cnf` que viene en `extras/ssl/`.
 
 ## Endpoints
 
+### Perfil y dispositivos
+
+- `GET /api/me`: conserva los datos del token y agrega `perfil`. Crea
+  `users/{uid}` si no existe, con email, nombre, fotoUrl, premium=false,
+  premiumHasta=null, creadoEn y actualizadoEn. Email puede ser null para
+  cuentas anonimas. No sobrescribe perfiles existentes.
+- `PATCH /api/me`: permite editar solamente nombre y fotoUrl. Email y los
+  campos premium nunca se aceptan del cliente.
+- `/api/dispositivos`: GET/POST y GET/PATCH/PUT/DELETE por `/{id}`, en la
+  colección raíz `dispositivos`. Token obligatorio; plataforma android, ios o web.
+  La app usa el token como id y actualiza el documento si ya existe.
+
+La estructura operativa es plana. Las subcolecciones antiguas se conservan
+temporalmente como fuente para verificar la migración:
+
+```text
+users/{uid}            perfil
+mascotas/{id}          userId, nombre, especie, raza, fechaNacimiento, fotoUrl, notas
+vacunas/{id}           userId, mascotaId, nombre, fechaAplicacion, proximaFecha
+medicamentos/{id}      userId, mascotaId, nombre, dosis, horarios, fechaInicio
+alimentaciones/{id}    userId, mascotaId, tipoAlimento, cantidadGramos, fechaHora
+pesos/{id}             userId, mascotaId, fecha, valorKg
+paseos/{id}            userId, mascotaId, fechas, distancia, duracion, ruta
+recordatorios/{id}     userId, mascotaId, tipo, fecha, mensaje, completado
+dispositivos/{id}      userId, token, plataforma
+notificaciones/{id}    historial de avisos
+configuracion/{id}     configuracion del proyecto
+```
+
+Todos los documentos creados por estos endpoints reciben creadoEn y actualizadoEn
+del servidor. Firestore crea colecciones al guardar el primer documento; no
+requiere colecciones vacias ni datos ficticios. Los tipos y valores por defecto
+estan definidos en `src/Resources/Catalog.php`.
+
+Para activar las rutas hay que desplegar este backend en Vercel y compilar la
+app actualizada. Al iniciar sesion, la app consulta el perfil y registra FCM en
+Android/iOS; mantiene una sola escucha por sesion y reintenta fallos de red.
+Web crea el perfil pero no registra push porque aun falta configurar VAPID.
+
+La app programa avisos locales en el dispositivo al sincronizar tareas,
+vacunas y medicamentos; no requiere un cron ni facturación. Los avisos que se
+creen o cambien en otro dispositivo se incorporan cuando la app vuelva a abrirse.
+`DELETE /api/me` elimina los datos planos, los subdocumentos heredados y la
+cuenta de Firebase Authentication. Backups y PITR no se activan porque requieren
+facturación; configurar una exportación manual si se necesita recuperación.
+
 Todas las rutas menos `/api/health` exigen
 `Authorization: Bearer <ID token de Firebase>`.
 
@@ -169,18 +215,9 @@ campo falla:
 }
 ```
 
-## Estructura en Firestore
+## Compatibilidad de paseos
 
-```
-users/{uid}/mascotas/{mascotaId}
-users/{uid}/mascotas/{mascotaId}/vacunas/{id}
-users/{uid}/mascotas/{mascotaId}/medicamentos/{id}
-users/{uid}/mascotas/{mascotaId}/pesos/{id}
-users/{uid}/mascotas/{mascotaId}/paseos/{id}
-users/{uid}/recordatorios/{id}
-```
-
-Es la misma que usaba la app antes, con un cambio en los paseos: donde habia
+Donde antes habia
 `ruta` (lista de GeoPoint, sin tiempos) y `rutaDetallada` (con tiempos) ahora
 hay un unico campo `ruta` con `{lat, lng, timestamp}` por punto. Los paseos
 viejos se siguen leyendo — `Firestore\Value` decodifica los GeoPoint — pero

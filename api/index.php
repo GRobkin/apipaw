@@ -13,12 +13,14 @@ declare(strict_types=1);
 
 use PawLife\Auth\AuthenticatedUser;
 use PawLife\Auth\FirebaseTokenVerifier;
+use PawLife\Auth\FirebaseAuthAdmin;
 use PawLife\Firestore\FirestoreClient;
 use PawLife\Http\HttpException;
 use PawLife\Http\Request;
 use PawLife\Http\Response;
 use PawLife\Http\Router;
 use PawLife\Resources\Catalog;
+use PawLife\Resources\CareValidator;
 use PawLife\Resources\ResourceController;
 use PawLife\Resources\Schema;
 use PawLife\Support\Env;
@@ -73,10 +75,46 @@ try {
         };
     };
 
-    // Datos del usuario que hay detras del token. Util para depurar desde la app
-    // y, mas adelante, para pintar el perfil en las pantallas de cuenta.
-    $router->get('/api/me', $auth(static function (Request $r, array $p, AuthenticatedUser $u): Response {
-        return Response::ok($u->toArray());
+    $ensurePerfil = static function (AuthenticatedUser $u) use ($db): array {
+        $path = "users/{$u->uid}";
+        $data = $db()->getDocument($path);
+        if ($data !== null) {
+            return $data;
+        }
+        $now = new DateTimeImmutable();
+        $inicial = [
+            'email' => $u->email,
+            'nombre' => $u->name ?? '',
+            'fotoUrl' => $u->pictureUrl,
+            'premium' => false,
+            'premiumHasta' => null,
+            'zonaHoraria' => 'America/Montevideo',
+            'creadoEn' => $now,
+            'actualizadoEn' => $now,
+        ];
+        try {
+            return $db()->createDocument('users', $inicial, $u->uid)['data'];
+        } catch (HttpException $e) {
+            if ($e->status() !== 409) {
+                throw $e;
+            }
+            // Otro dispositivo pudo crear el perfil al mismo tiempo.
+            return $db()->getDocument($path) ?? throw $e;
+        }
+    };
+
+    $router->get('/api/me', $auth(static function (Request $r, array $p, AuthenticatedUser $u) use ($ensurePerfil): Response {
+        return Response::ok($u->toArray() + [
+            'perfil' => Catalog::perfil()->toJson($u->uid, $ensurePerfil($u)),
+        ]);
+    }));
+
+    $router->patch('/api/me', $auth(static function (Request $r, array $p, AuthenticatedUser $u) use ($db, $ensurePerfil): Response {
+        $data = Catalog::perfilEditable()->forUpdate($r->body);
+        $ensurePerfil($u);
+        $data['actualizadoEn'] = new DateTimeImmutable();
+        $actualizado = $db()->patchDocument("users/{$u->uid}", $data);
+        return Response::ok(Catalog::perfil()->toJson($u->uid, $actualizado['data']));
     }));
 
     /**
@@ -91,6 +129,9 @@ try {
         callable $collectionPath,
         ?callable $parentPath = null,
         array $subcollections = [],
+        ?callable $scope = null,
+        ?callable $cascadePlan = null,
+        ?callable $validateWrite = null,
     ) use ($router, $auth, $db): void {
         // El controlador se construye en la primera peticion que lo use, no al
         // registrar la ruta: asi /api/health sigue contestando aunque falten
@@ -102,7 +143,10 @@ try {
             $db,
             $collectionPath,
             $parentPath,
-            $subcollections
+            $subcollections,
+            $scope,
+            $cascadePlan,
+            $validateWrite,
         ): ResourceController {
             return $controller ??= new ResourceController(
                 $schema,
@@ -110,6 +154,9 @@ try {
                 $collectionPath,
                 $parentPath,
                 $subcollections,
+                $scope,
+                $cascadePlan,
+                $validateWrite,
             );
         };
 
@@ -129,8 +176,13 @@ try {
         $router->delete("$base/{id}", $action('destroy'));
     };
 
-    $mascotasPath = static fn (AuthenticatedUser $u, array $p): string => "users/{$u->uid}/mascotas";
-    $mascotaDoc = static fn (AuthenticatedUser $u, array $p): string => "users/{$u->uid}/mascotas/{$p['mascotaId']}";
+    $mascotasPath = static fn (AuthenticatedUser $u, array $p): string => 'mascotas';
+    $mascotaDoc = static fn (AuthenticatedUser $u, array $p): string => "mascotas/{$p['mascotaId']}";
+    $porUsuario = static fn (AuthenticatedUser $u, array $p): array => ['userId' => $u->uid];
+    $porMascota = static fn (AuthenticatedUser $u, array $p): array => [
+        'userId' => $u->uid,
+        'mascotaId' => $p['mascotaId'],
+    ];
 
     $resource(
         '/api/mascotas',
@@ -138,7 +190,12 @@ try {
         $mascotasPath,
         null,
         // Al borrar la mascota se lleva por delante todo lo que cuelga de ella.
-        ['vacunas', 'medicamentos', 'pesos', 'paseos'],
+        [],
+        $porUsuario,
+        static fn (AuthenticatedUser $u, array $p, string $id): array => array_fill_keys(
+            ['vacunas', 'medicamentos', 'alimentaciones', 'pesos', 'paseos', 'recordatorios'],
+            ['userId' => $u->uid, 'mascotaId' => $id],
+        ),
     );
 
     foreach ([
@@ -146,19 +203,99 @@ try {
         'medicamentos' => Catalog::medicamentos(),
         'pesos' => Catalog::pesos(),
         'paseos' => Catalog::paseos(),
+        'alimentaciones' => Catalog::alimentaciones(),
     ] as $nombre => $schema) {
+        $cascade = in_array($nombre, ['vacunas', 'medicamentos'], true)
+            ? static fn (AuthenticatedUser $u, array $p, string $id): array => [
+                'recordatorios' => [
+                    'filters' => ['userId' => $u->uid],
+                    'matches' => [
+                        'mascotaId' => $p['mascotaId'],
+                        'tipo' => $nombre === 'vacunas' ? 'vacuna' : 'medicamento',
+                        'entidadId' => $id,
+                    ],
+                ],
+            ]
+            : null;
         $resource(
             "/api/mascotas/{mascotaId}/$nombre",
             $schema,
-            static fn (AuthenticatedUser $u, array $p): string => "users/{$u->uid}/mascotas/{$p['mascotaId']}/$nombre",
+            static fn (AuthenticatedUser $u, array $p): string => $nombre,
             $mascotaDoc,
+            [],
+            $porMascota,
+            $cascade,
+            static function (array $data, AuthenticatedUser $u) use ($nombre): void {
+                CareValidator::check($nombre, $data);
+            },
         );
     }
+
+    $validateRecordatorio = static function (array $data, AuthenticatedUser $u) use ($db): void {
+        $mascotaId = $data['mascotaId'] ?? null;
+        $mascota = is_string($mascotaId) && $mascotaId !== ''
+            ? $db()->getDocument("mascotas/$mascotaId") : null;
+        if ($mascota === null || ($mascota['userId'] ?? null) !== $u->uid) {
+            throw HttpException::badRequest('La mascota del recordatorio no existe o no pertenece a la cuenta.');
+        }
+        $collection = match ($data['tipo'] ?? null) {
+            'vacuna' => 'vacunas',
+            'medicamento' => 'medicamentos',
+            default => null,
+        };
+        $entityId = $data['entidadId'] ?? null;
+        if ($entityId !== null && $entityId !== '') {
+            if ($collection === null || !is_string($entityId)) {
+                throw HttpException::badRequest('La entidad del recordatorio no corresponde al tipo.');
+            }
+            $entity = $db()->getDocument("$collection/$entityId");
+            if ($entity === null || ($entity['userId'] ?? null) !== $u->uid
+                || ($entity['mascotaId'] ?? null) !== $mascotaId) {
+                throw HttpException::badRequest('La entidad del recordatorio no pertenece a esa mascota.');
+            }
+        }
+    };
 
     $resource(
         '/api/recordatorios',
         Catalog::recordatorios(),
-        static fn (AuthenticatedUser $u, array $p): string => "users/{$u->uid}/recordatorios",
+        static fn (AuthenticatedUser $u, array $p): string => 'recordatorios',
+        null,
+        [],
+        $porUsuario,
+        null,
+        $validateRecordatorio,
+    );
+
+    $router->delete('/api/me', $auth(static function (Request $r, array $p, AuthenticatedUser $u) use ($db): Response {
+        $legacyRoot = "users/{$u->uid}";
+        foreach ($db()->listDocuments("$legacyRoot/mascotas") as $pet) {
+            $petPath = "$legacyRoot/mascotas/{$pet['id']}";
+            foreach (['vacunas', 'medicamentos', 'alimentaciones', 'pesos', 'paseos'] as $child) {
+                $db()->deleteCollection("$petPath/$child");
+            }
+            $db()->deleteDocument($petPath);
+        }
+        foreach (['recordatorios', 'dispositivos'] as $child) {
+            $db()->deleteCollection("$legacyRoot/$child");
+        }
+        foreach (['mascotas', 'vacunas', 'medicamentos', 'alimentaciones', 'pesos', 'paseos', 'recordatorios', 'dispositivos', 'notificaciones'] as $collection) {
+            foreach ($db()->queryDocuments($collection, ['userId' => $u->uid]) as $document) {
+                $db()->deleteDocument($collection . '/' . $document['id']);
+            }
+        }
+        $db()->deleteDocument($legacyRoot);
+        FirebaseAuthAdmin::deleteUser($u->uid);
+        return Response::noContent();
+    }));
+
+    $resource(
+        '/api/dispositivos',
+        Catalog::dispositivos(),
+        static fn (AuthenticatedUser $u, array $p): string => 'dispositivos',
+        null,
+        [],
+        $porUsuario,
     );
 
     $router->dispatch($request)->send($origin);

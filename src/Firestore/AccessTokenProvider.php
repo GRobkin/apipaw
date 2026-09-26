@@ -22,18 +22,22 @@ use RuntimeException;
  */
 final class AccessTokenProvider
 {
-    private const SCOPE = 'https://www.googleapis.com/auth/datastore';
+    public const FIRESTORE_SCOPE = 'https://www.googleapis.com/auth/datastore';
+    public const AUTH_SCOPE = 'https://www.googleapis.com/auth/cloud-platform';
 
     /** Duracion que pedimos. Google devuelve como mucho una hora. */
     private const LIFETIME_SECONDS = 3600;
 
-    public function __construct(private readonly ServiceAccount $serviceAccount)
+    public function __construct(
+        private readonly ServiceAccount $serviceAccount,
+        private readonly string $scope = self::FIRESTORE_SCOPE,
+    )
     {
     }
 
     public function token(): string
     {
-        $cacheKey = 'google-access-token-' . sha1($this->serviceAccount->clientEmail . self::SCOPE);
+        $cacheKey = 'google-access-token-' . sha1($this->serviceAccount->clientEmail . $this->scope);
 
         $cached = Cache::get($cacheKey);
         if (is_string($cached) && $cached !== '') {
@@ -43,7 +47,7 @@ final class AccessTokenProvider
         $now = time();
         $assertion = Jwt::signRs256([
             'iss' => $this->serviceAccount->clientEmail,
-            'scope' => self::SCOPE,
+            'scope' => $this->scope,
             'aud' => $this->serviceAccount->tokenUri,
             'iat' => $now,
             'exp' => $now + self::LIFETIME_SECONDS,

@@ -14,9 +14,9 @@ use PawLife\Http\Response;
 /**
  * CRUD generico sobre una coleccion de Firestore, configurado con un Schema.
  *
- * Todas las rutas se construyen a partir del uid del token verificado, nunca
- * de algo que mande el cliente en el cuerpo o en la URL. Ese es el unico
- * mecanismo que impide que un usuario lea o escriba datos de otro, porque la
+ * Las consultas se filtran por el uid del token verificado, nunca por el
+ * userId que mande el cliente. Ese es el mecanismo que impide que un usuario
+ * lea o escriba datos de otro, porque la
  * service account con la que escribe el backend ignora firestore.rules.
  */
 final class ResourceController
@@ -36,6 +36,9 @@ final class ResourceController
         private readonly mixed $collectionPath,
         private readonly mixed $parentPath = null,
         private readonly array $subcollections = [],
+        private readonly mixed $scope = null,
+        private readonly mixed $cascadePlan = null,
+        private readonly mixed $validateWrite = null,
     ) {
     }
 
@@ -47,11 +50,11 @@ final class ResourceController
         $orderBy = $request->queryParam('orderBy', $this->schema->defaultOrderBy);
         $limit = $request->queryParam('limit');
 
-        $documents = $this->firestore->listDocuments(
-            $path,
-            $orderBy,
-            $limit !== null && ctype_digit($limit) ? max(1, (int) $limit) : null,
-        );
+        $numericLimit = $limit !== null && ctype_digit($limit) ? max(1, (int) $limit) : null;
+        $filters = $this->scope === null ? [] : ($this->scope)($user, $params);
+        $documents = $filters === []
+            ? $this->firestore->listDocuments($path, $orderBy, $numericLimit)
+            : $this->firestore->queryDocuments($path, $filters, $orderBy, $numericLimit);
 
         $items = array_map(
             fn (array $doc) => $this->schema->toJson($doc['id'], $doc['data']),
@@ -71,6 +74,7 @@ final class ResourceController
         if ($data === null) {
             throw HttpException::notFound("No existe {$this->schema->name} con id $id.");
         }
+        $this->assertOwned($data, $user, $params);
 
         return Response::ok($this->schema->toJson($id, $data));
     }
@@ -81,6 +85,12 @@ final class ResourceController
         $path = $this->resolveCollection($user, $params);
 
         $data = $this->schema->forCreate($request->body);
+        if ($this->scope !== null) {
+            $data = array_merge($data, ($this->scope)($user, $params));
+        }
+        if ($this->validateWrite !== null) {
+            ($this->validateWrite)($data, $user);
+        }
 
         $now = new DateTimeImmutable();
         $data['creadoEn'] = $now;
@@ -120,7 +130,16 @@ final class ResourceController
         $id = $this->idFrom($params);
         $path = $this->resolveCollection($user, $params) . '/' . $id;
 
+        $existing = $this->firestore->getDocument($path);
+        if ($existing === null) {
+            throw HttpException::notFound("No existe {$this->schema->name} con id $id.");
+        }
+        $this->assertOwned($existing, $user, $params);
+
         $data = $this->schema->forUpdate($request->body);
+        if ($this->validateWrite !== null) {
+            ($this->validateWrite)(array_merge($existing, $data), $user);
+        }
         $data['actualizadoEn'] = new DateTimeImmutable();
 
         $updated = $this->firestore->patchDocument($path, $data);
@@ -135,8 +154,29 @@ final class ResourceController
         $collection = $this->resolveCollection($user, $params);
         $path = $collection . '/' . $id;
 
+        $existing = $this->firestore->getDocument($path);
+        if ($existing === null) {
+            return Response::noContent();
+        }
+        $this->assertOwned($existing, $user, $params);
+
         foreach ($this->subcollections as $subcollection) {
             $this->firestore->deleteCollection("$path/$subcollection");
+        }
+
+        if ($this->cascadePlan !== null) {
+            foreach (($this->cascadePlan)($user, $params, $id) as $relatedCollection => $plan) {
+                $filters = $plan['filters'] ?? $plan;
+                $matches = $plan['matches'] ?? [];
+                foreach ($this->firestore->queryDocuments($relatedCollection, $filters) as $document) {
+                    foreach ($matches as $field => $expected) {
+                        if (($document['data'][$field] ?? null) !== $expected) {
+                            continue 2;
+                        }
+                    }
+                    $this->firestore->deleteDocument($relatedCollection . '/' . $document['id']);
+                }
+            }
         }
 
         $this->firestore->deleteDocument($path);
@@ -149,13 +189,27 @@ final class ResourceController
     {
         if ($this->parentPath !== null) {
             $parent = ($this->parentPath)($user, $params);
-            if (!$this->firestore->documentExists($parent)) {
+            $parentData = $this->firestore->getDocument($parent);
+            if ($parentData === null || ($parentData['userId'] ?? null) !== $user->uid) {
                 $mascotaId = $params['mascotaId'] ?? '?';
                 throw HttpException::notFound("No existe la mascota $mascotaId.");
             }
         }
 
         return ($this->collectionPath)($user, $params);
+    }
+
+    /** @param array<string, mixed> $data @param array<string, string> $params */
+    private function assertOwned(array $data, AuthenticatedUser $user, array $params): void
+    {
+        if ($this->scope === null) {
+            return;
+        }
+        foreach (($this->scope)($user, $params) as $field => $expected) {
+            if (($data[$field] ?? null) !== $expected) {
+                throw HttpException::notFound("No existe {$this->schema->name}.");
+            }
+        }
     }
 
     /** @param array<string, string> $params */

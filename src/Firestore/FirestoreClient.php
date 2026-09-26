@@ -20,8 +20,8 @@ use PawLife\Support\Json;
  *
  * Las peticiones van firmadas con la service account, que se salta las reglas
  * de firestore.rules. Por eso el aislamiento entre usuarios NO depende de las
- * reglas sino de que cada ruta se construya bajo users/{uid}, con el uid
- * sacado del ID token verificado (ver Auth\FirebaseTokenVerifier).
+ * reglas sino de que cada consulta de colecciones raíz filtra por userId,
+ * obtenido del ID token verificado (ver Auth\FirebaseTokenVerifier).
  */
 final class FirestoreClient
 {
@@ -90,6 +90,63 @@ final class FirestoreClient
             $pages++;
         } while ($pageToken !== null && $pages < self::MAX_PAGES);
 
+        if ($pageToken !== null) {
+            throw new HttpException(503, 'La coleccion supera el limite de lectura de esta operacion.');
+        }
+
+        return $documents;
+    }
+
+    /**
+     * Consulta una colección raíz por campos de igualdad.
+     *
+     * @param array<string, mixed> $filters
+     * @return list<array{id: string, data: array<string, mixed>}>
+     */
+    public function queryDocuments(string $collection, array $filters, ?string $orderBy = null, ?int $limit = null): array
+    {
+        $fieldFilters = [];
+        foreach ($filters as $field => $value) {
+            $fieldFilters[] = [
+                'fieldFilter' => [
+                    'field' => ['fieldPath' => (string) $field],
+                    'op' => 'EQUAL',
+                    'value' => Value::encode($value),
+                ],
+            ];
+        }
+
+        $query = ['from' => [['collectionId' => $collection]]];
+        if (count($fieldFilters) === 1) {
+            $query['where'] = $fieldFilters[0];
+        } elseif ($fieldFilters !== []) {
+            $query['where'] = ['compositeFilter' => ['op' => 'AND', 'filters' => $fieldFilters]];
+        }
+        if ($orderBy !== null) {
+            [$field, $direction] = array_pad(preg_split('/\s+/', trim($orderBy), 2) ?: [], 2, 'asc');
+            $query['orderBy'] = [[
+                'field' => ['fieldPath' => $field],
+                'direction' => strtolower($direction) === 'desc' ? 'DESCENDING' : 'ASCENDING',
+            ]];
+        }
+        if ($limit !== null) {
+            $query['limit'] = max(1, min(3000, $limit));
+        }
+
+        $url = self::BASE . '/projects/' . rawurlencode($this->projectId)
+            . '/databases/(default)/documents:runQuery';
+        $rows = $this->request('POST', $url, ['structuredQuery' => $query]) ?? [];
+        $documents = [];
+        foreach ($rows as $row) {
+            $document = is_array($row) ? ($row['document'] ?? null) : null;
+            if (!is_array($document)) {
+                continue;
+            }
+            $documents[] = [
+                'id' => self::idFromName((string) ($document['name'] ?? '')),
+                'data' => Value::decodeFields($document['fields'] ?? []),
+            ];
+        }
         return $documents;
     }
 
