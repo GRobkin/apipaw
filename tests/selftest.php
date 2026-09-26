@@ -5,6 +5,7 @@ declare(strict_types=1);
 require dirname(__DIR__) . '/src/bootstrap.php';
 
 use PawLife\Firestore\Value;
+use PawLife\Auth\FirebaseAuthAdmin;
 use PawLife\Http\HttpException;
 use PawLife\Resources\Catalog;
 use PawLife\Resources\CareValidator;
@@ -63,6 +64,25 @@ check('rechaza fechas invertidas y horarios invalidos de cuidados', function ():
             assertSame(400, $e->status());
         }
     }
+});
+
+check('cuenta eliminada, deshabilitada o sesion revocada no puede entrar', function (): void {
+    foreach ([
+        [],
+        ['users' => [['localId' => 'otra']]],
+        ['users' => [['localId' => 'uid', 'disabled' => true]]],
+        ['users' => [['localId' => 'uid', 'validSince' => '200']]],
+    ] as $lookup) {
+        try {
+            FirebaseAuthAdmin::assertLookupResult('uid', 100, $lookup);
+            throw new RuntimeException('Acepto una cuenta o sesion inactiva');
+        } catch (HttpException $e) {
+            assertSame(401, $e->status());
+        }
+    }
+    FirebaseAuthAdmin::assertLookupResult('uid', 200, [
+        'users' => [['localId' => 'uid', 'validSince' => '200']],
+    ]);
 });
 
 function check(string $name, callable $fn): void

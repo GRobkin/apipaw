@@ -78,6 +78,7 @@ final class FirebaseTokenVerifier
         }
 
         $this->assertClaims($claims);
+        FirebaseAuthAdmin::assertActive((string) $claims['sub'], (int) ($claims['auth_time'] ?? 0));
 
         $firebase = is_array($claims['firebase'] ?? null) ? $claims['firebase'] : [];
 
