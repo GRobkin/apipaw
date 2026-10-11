@@ -12,7 +12,7 @@ use PawLife\Support\HttpClient;
 use PawLife\Support\Json;
 use RuntimeException;
 
-final class FcmSender
+final class FcmSender implements PushSender
 {
     public function send(string $deviceToken, string $reminderId, string $petId, string $type, string $message): void
     {

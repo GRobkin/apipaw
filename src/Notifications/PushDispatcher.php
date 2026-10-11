@@ -5,18 +5,20 @@ declare(strict_types=1);
 namespace PawLife\Notifications;
 
 use DateTimeImmutable;
-use PawLife\Firestore\FirestoreClient;
 use PawLife\Http\HttpException;
 
 final class PushDispatcher
 {
     private const LOOKBACK_HOURS = 2;
     private const MAX_SENDS = 10;
+    private const PAGE_SIZE = 500;
+    private const MAX_SCANNED = 500;
     private const MAX_ATTEMPTS = 3;
+    private const CURSOR_PATH = 'system/push-dispatch';
 
     public function __construct(
-        private readonly FirestoreClient $db,
-        private readonly FcmSender $fcm,
+        private readonly ReminderStore $db,
+        private readonly PushSender $fcm,
     ) {
     }
 
@@ -25,63 +27,129 @@ final class PushDispatcher
     {
         $now = $clock ?? new DateTimeImmutable('now');
         $start = $now->modify('-' . self::LOOKBACK_HOURS . ' hours');
-        $reminders = $this->db->queryDateWindow('recordatorios', 'fecha', $start, $now);
-        $stats = ['recordatorios' => count($reminders), 'candidatos' => 0, 'enviados' => 0, 'fallidos' => 0, 'omitidos' => 0];
+        $state = $this->db->getDocument(self::CURSOR_PATH);
+        $after = self::savedCursor($state, $start, $now);
+        $stats = ['recordatorios' => 0, 'candidatos' => 0, 'enviados' => 0, 'fallidos' => 0, 'omitidos' => 0];
         $devicesByUser = [];
         $attempted = 0;
+        $scanned = 0;
 
-        foreach ($reminders as $reminder) {
-            $data = $reminder['data'];
-            $uid = $data['userId'] ?? null;
-            $due = $data['fecha'] ?? null;
-            if (($data['completado'] ?? false) === true || !is_string($uid) || $uid === '' || !$due instanceof DateTimeImmutable) {
-                $stats['omitidos']++;
-                continue;
-            }
-            if (!isset($devicesByUser[$uid])) {
-                $devicesByUser[$uid] = $this->db->queryDocuments('dispositivos', ['userId' => $uid]);
-            }
-            foreach ($devicesByUser[$uid] as $device) {
-                $info = $device['data'];
-                $token = $info['token'] ?? null;
-                if (!is_string($token) || $token === '' || ($info['activo'] ?? true) === false || ($info['demo'] ?? false) === true) {
-                    $stats['omitidos']++;
+        while ($scanned < self::MAX_SCANNED) {
+            $pageSize = min(self::PAGE_SIZE, self::MAX_SCANNED - $scanned);
+            $reminders = $this->db->queryDateWindowPage('recordatorios', 'fecha', $start, $now, $pageSize, $after);
+            if ($reminders === []) {
+                // El cursor anterior llegó al final: empezar por el inicio en
+                // este mismo ciclo, sin esperar otros cinco minutos.
+                if ($after !== null && $scanned === 0) {
+                    $after = null;
                     continue;
                 }
-                $stats['candidatos']++;
-                if ($dryRun) continue;
-                if ($attempted >= self::MAX_SENDS) return $stats;
-                $noticeId = self::noticeId($reminder['id'], $token, $due);
-                if (!$this->claim($noticeId, $reminder['id'], $uid, $token, $due, $now)) {
+                if (!$dryRun) $this->saveCursor(null, $state !== null);
+                return $stats;
+            }
+
+            foreach ($reminders as $reminder) {
+                $stats['recordatorios']++;
+                $scanned++;
+                $data = $reminder['data'];
+                $uid = $data['userId'] ?? null;
+                $due = $data['fecha'] ?? null;
+                if (($data['completado'] ?? false) === true || !is_string($uid) || $uid === '' || !$due instanceof DateTimeImmutable) {
                     $stats['omitidos']++;
+                    $after = $reminder['cursor'];
                     continue;
                 }
-                $attempted++;
-                try {
-                    $this->fcm->send(
-                        $token,
-                        $reminder['id'],
-                        (string) ($data['mascotaId'] ?? ''),
-                        (string) ($data['tipo'] ?? ''),
-                        substr((string) ($data['mensaje'] ?? 'Tenes un cuidado pendiente.'), 0, 240),
-                    );
-                    $this->db->patchDocument('notificaciones/' . $noticeId, [
-                        'estado' => 'enviada', 'enviadaEn' => new DateTimeImmutable('now'),
-                        'actualizadoEn' => new DateTimeImmutable('now'),
-                    ]);
-                    $stats['enviados']++;
-                } catch (\Throwable $e) {
-                    $this->db->patchDocument('notificaciones/' . $noticeId, [
-                        'estado' => 'fallida',
-                        'proximoIntento' => (new DateTimeImmutable('now'))->modify('+10 minutes'),
-                        'ultimoError' => substr($e->getMessage(), 0, 160),
-                        'actualizadoEn' => new DateTimeImmutable('now'),
-                    ]);
-                    $stats['fallidos']++;
+                if (!isset($devicesByUser[$uid])) {
+                    $devicesByUser[$uid] = $this->db->queryDocuments('dispositivos', ['userId' => $uid]);
                 }
+                foreach ($devicesByUser[$uid] as $device) {
+                    $info = $device['data'];
+                    $token = $info['token'] ?? null;
+                    if (!is_string($token) || $token === '' || ($info['activo'] ?? true) === false || ($info['demo'] ?? false) === true) {
+                        $stats['omitidos']++;
+                        continue;
+                    }
+                    $stats['candidatos']++;
+                    if ($dryRun) continue;
+                    if ($attempted >= self::MAX_SENDS) {
+                        $this->saveCursor($after, $state !== null);
+                        return $stats;
+                    }
+                    $noticeId = self::noticeId($reminder['id'], $token, $due);
+                    if (!$this->claim($noticeId, $reminder['id'], $uid, $token, $due, $now)) {
+                        $stats['omitidos']++;
+                        continue;
+                    }
+                    $attempted++;
+                    try {
+                        $this->fcm->send(
+                            $token,
+                            $reminder['id'],
+                            (string) ($data['mascotaId'] ?? ''),
+                            (string) ($data['tipo'] ?? ''),
+                            substr((string) ($data['mensaje'] ?? 'Tenes un cuidado pendiente.'), 0, 240),
+                        );
+                        $this->db->patchDocument('notificaciones/' . $noticeId, [
+                            'estado' => 'enviada', 'enviadaEn' => new DateTimeImmutable('now'),
+                            'actualizadoEn' => new DateTimeImmutable('now'),
+                        ]);
+                        $stats['enviados']++;
+                    } catch (\Throwable $e) {
+                        $this->db->patchDocument('notificaciones/' . $noticeId, [
+                            'estado' => 'fallida',
+                            'proximoIntento' => (new DateTimeImmutable('now'))->modify('+10 minutes'),
+                            'ultimoError' => substr($e->getMessage(), 0, 160),
+                            'actualizadoEn' => new DateTimeImmutable('now'),
+                        ]);
+                        $stats['fallidos']++;
+                    }
+                }
+                $after = $reminder['cursor'];
+                if (!$dryRun && $attempted >= self::MAX_SENDS) {
+                    $this->saveCursor($after, $state !== null);
+                    return $stats;
+                }
+            }
+            if (count($reminders) < $pageSize) {
+                if (!$dryRun) $this->saveCursor(null, $state !== null);
+                return $stats;
             }
         }
+        if (!$dryRun) $this->saveCursor($after, $state !== null);
         return $stats;
+    }
+
+    /** @param array<string, mixed>|null $state
+     *  @return array{fecha: DateTimeImmutable, nombre: string}|null
+     */
+    private static function savedCursor(?array $state, DateTimeImmutable $start, DateTimeImmutable $end): ?array
+    {
+        $fecha = $state['fecha'] ?? null;
+        $nombre = $state['nombre'] ?? null;
+        if (!$fecha instanceof DateTimeImmutable || $fecha < $start || $fecha > $end || !is_string($nombre) || $nombre === '') {
+            return null;
+        }
+        return ['fecha' => $fecha, 'nombre' => $nombre];
+    }
+
+    /** @param array{fecha: DateTimeImmutable, nombre: string}|null $cursor */
+    private function saveCursor(?array $cursor, bool $exists): void
+    {
+        $data = [
+            'fecha' => $cursor['fecha'] ?? null,
+            'nombre' => $cursor['nombre'] ?? null,
+            'actualizadoEn' => new DateTimeImmutable('now'),
+        ];
+        if ($exists) {
+            $this->db->patchDocument(self::CURSOR_PATH, $data);
+            return;
+        }
+        try {
+            $this->db->createDocument('system', $data, 'push-dispatch');
+        } catch (HttpException $e) {
+            if ($e->status() !== 409) throw $e;
+            $this->db->patchDocument(self::CURSOR_PATH, $data);
+        }
     }
 
     public static function noticeId(string $reminderId, string $deviceToken, DateTimeImmutable $due): string

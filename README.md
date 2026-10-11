@@ -168,6 +168,13 @@ errores se reintentan hasta tres veces. Los avisos locales siguen siendo la
 fuente principal para horarios precisos; puede aparecer un duplicado entre
 aviso local y push si ambos canales entregan el mismo recordatorio.
 
+La consulta omite los recordatorios completados y procesa hasta 500 pendientes
+por ciclo, guardando un cursor para continuar en el siguiente. Cada cuenta
+puede hacer hasta 100 altas o cambios que dejen recordatorios pendientes por
+bloque UTC de dos horas; al superar el limite, la API responde 429. Marcar un
+recordatorio como completado sigue disponible. Esta consulta requiere el indice
+`completado` + `fecha` de `../PawLife/firestore.indexes.json`.
+
 Para activar esta parte hace falta una cuenta gratuita de Cloudflare. Desde
 `cloudflare/`, iniciar sesion con `npx wrangler login`, cargar el contenido de
 `cloudflare/.private-key.pem` como secreto `PUSHPOLL_PRIVATE_KEY` con
@@ -186,6 +193,8 @@ facturación; configurar una exportación manual si se necesita recuperación.
 
 Todas las rutas de usuario exigen
 `Authorization: Bearer <ID token de Firebase>`.
+Los cuerpos JSON de escritura tienen un limite de 2 MiB; un cuerpo mayor
+recibe 413 antes de decodificarse.
 La ruta interna de push exige una firma reciente del Worker y nunca acepta
 un token de usuario como sustituto.
 

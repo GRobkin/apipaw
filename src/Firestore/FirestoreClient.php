@@ -6,6 +6,7 @@ namespace PawLife\Firestore;
 
 use PawLife\Auth\ServiceAccount;
 use PawLife\Http\HttpException;
+use PawLife\Notifications\ReminderStore;
 use PawLife\Support\Env;
 use PawLife\Support\HttpClient;
 use PawLife\Support\Json;
@@ -23,7 +24,7 @@ use PawLife\Support\Json;
  * reglas sino de que cada consulta de colecciones raíz filtra por userId,
  * obtenido del ID token verificado (ver Auth\FirebaseTokenVerifier).
  */
-final class FirestoreClient
+final class FirestoreClient implements ReminderStore
 {
     private const BASE = 'https://firestore.googleapis.com/v1';
 
@@ -151,25 +152,15 @@ final class FirestoreClient
     }
 
     /**
-     * Busca fechas en una ventana acotada. El indice simple de fecha de
-     * Firestore cubre esta consulta sin crear un indice compuesto adicional.
+     * Página estable de una ventana temporal. El nombre del documento deshace
+     * empates de fecha para que el cursor no omita recordatorios simultáneos.
      *
-     * @return list<array{id: string, data: array<string, mixed>}>
+     * @param array{fecha: \DateTimeImmutable, nombre: string}|null $after
+     * @return list<array{id: string, data: array<string, mixed>, cursor: array{fecha: \DateTimeImmutable, nombre: string}}>
      */
-    public function queryDateWindow(string $collection, string $field, \DateTimeImmutable $start, \DateTimeImmutable $end, int $max = 500): array
+    public function queryDateWindowPage(string $collection, string $field, \DateTimeImmutable $start, \DateTimeImmutable $end, int $limit = 100, ?array $after = null): array
     {
-        $query = [
-            'from' => [['collectionId' => $collection]],
-            'where' => ['compositeFilter' => [
-                'op' => 'AND',
-                'filters' => [
-                    ['fieldFilter' => ['field' => ['fieldPath' => $field], 'op' => 'GREATER_THAN_OR_EQUAL', 'value' => Value::encode($start)]],
-                    ['fieldFilter' => ['field' => ['fieldPath' => $field], 'op' => 'LESS_THAN_OR_EQUAL', 'value' => Value::encode($end)]],
-                ],
-            ]],
-            'orderBy' => [['field' => ['fieldPath' => $field], 'direction' => 'ASCENDING']],
-            'limit' => $max + 1,
-        ];
+        $query = self::dateWindowQuery($collection, $field, $start, $end, $limit, $after);
         $url = self::BASE . '/projects/' . rawurlencode($this->projectId)
             . '/databases/(default)/documents:runQuery';
         $rows = $this->request('POST', $url, ['structuredQuery' => $query]) ?? [];
@@ -177,15 +168,48 @@ final class FirestoreClient
         foreach ($rows as $row) {
             $document = is_array($row) ? ($row['document'] ?? null) : null;
             if (!is_array($document)) continue;
+            $data = Value::decodeFields($document['fields'] ?? []);
+            $fecha = $data[$field] ?? null;
+            $nombre = $document['name'] ?? null;
+            if (!$fecha instanceof \DateTimeImmutable || !is_string($nombre) || $nombre === '') {
+                throw new HttpException(502, 'Firestore devolvio un cursor de recordatorio invalido.');
+            }
             $documents[] = [
-                'id' => self::idFromName((string) ($document['name'] ?? '')),
-                'data' => Value::decodeFields($document['fields'] ?? []),
+                'id' => self::idFromName($nombre),
+                'data' => $data,
+                'cursor' => ['fecha' => $fecha, 'nombre' => $nombre],
             ];
         }
-        if (count($documents) > $max) {
-            throw new HttpException(503, 'Hay demasiados recordatorios pendientes para un ciclo.');
-        }
         return $documents;
+    }
+
+    /** @param array{fecha: \DateTimeImmutable, nombre: string}|null $after */
+    public static function dateWindowQuery(string $collection, string $field, \DateTimeImmutable $start, \DateTimeImmutable $end, int $limit, ?array $after = null): array
+    {
+        $limit = max(1, min(500, $limit));
+        $query = [
+            'from' => [['collectionId' => $collection]],
+            'where' => ['compositeFilter' => [
+                'op' => 'AND',
+                'filters' => [
+                    ['fieldFilter' => ['field' => ['fieldPath' => 'completado'], 'op' => 'EQUAL', 'value' => Value::encode(false)]],
+                    ['fieldFilter' => ['field' => ['fieldPath' => $field], 'op' => 'GREATER_THAN_OR_EQUAL', 'value' => Value::encode($start)]],
+                    ['fieldFilter' => ['field' => ['fieldPath' => $field], 'op' => 'LESS_THAN_OR_EQUAL', 'value' => Value::encode($end)]],
+                ],
+            ]],
+            'orderBy' => [
+                ['field' => ['fieldPath' => $field], 'direction' => 'ASCENDING'],
+                ['field' => ['fieldPath' => '__name__'], 'direction' => 'ASCENDING'],
+            ],
+            'limit' => $limit,
+        ];
+        if ($after !== null) {
+            $query['startAt'] = [
+                'values' => [Value::encode($after['fecha']), ['referenceValue' => $after['nombre']]],
+                'before' => false,
+            ];
+        }
+        return $query;
     }
 
     /**

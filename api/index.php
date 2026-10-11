@@ -23,21 +23,22 @@ use PawLife\Resources\Catalog;
 use PawLife\Resources\CareValidator;
 use PawLife\Resources\ResourceController;
 use PawLife\Resources\Schema;
+use PawLife\Notifications\ReminderRateLimiter;
 use PawLife\Support\Env;
 
 require dirname(__DIR__) . '/src/bootstrap.php';
 
-$request = Request::fromGlobals();
-$origin = $request->header('origin');
-
-// El preflight del navegador no lleva token: se contesta antes de tocar nada.
-if ($request->method === 'OPTIONS') {
-    http_response_code(204);
-    Response::sendCorsHeaders($origin);
-    exit;
-}
-
+$origin = isset($_SERVER['HTTP_ORIGIN']) ? (string) $_SERVER['HTTP_ORIGIN'] : null;
 try {
+    $request = Request::fromGlobals();
+
+    // El preflight del navegador no lleva token: se contesta antes de tocar nada.
+    if ($request->method === 'OPTIONS') {
+        http_response_code(204);
+        Response::sendCorsHeaders($origin);
+        exit;
+    }
+
     $router = new Router();
 
     // Sin autenticacion: sirve para comprobar que el despliegue esta vivo y que
@@ -265,6 +266,9 @@ try {
                 throw HttpException::badRequest('La entidad del recordatorio no pertenece a esa mascota.');
             }
         }
+        if (($data['completado'] ?? false) !== true) {
+            (new ReminderRateLimiter($db()))->consume($u->uid);
+        }
     };
 
     $resource(
@@ -296,6 +300,7 @@ try {
             }
         }
         $db()->deleteDocument($legacyRoot);
+        $db()->deleteDocument(ReminderRateLimiter::documentPath($u->uid));
         FirebaseAuthAdmin::deleteUser($u->uid);
         return Response::noContent();
     }));
