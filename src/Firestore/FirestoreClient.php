@@ -47,6 +47,58 @@ final class FirestoreClient implements ReminderStore
         );
     }
 
+    /** Página estable de paseos de una mascota; el cursor jamás cambia el dueño. */
+    public function walkHistoryPage(string $uid, string $petId, ?string $cursor, int $limit = 30): array
+    {
+        $pet = $this->getDocument('mascotas/' . $petId);
+        if ($pet === null || ($pet['userId'] ?? null) !== $uid) {
+            throw HttpException::notFound('No existe la mascota.');
+        }
+        $after = null;
+        if ($cursor !== null) {
+            if (preg_match('/^[^\x00-\x1F\/]{1,1500}$/u', $cursor) !== 1 || in_array($cursor, ['.', '..'], true)) {
+                throw HttpException::badRequest('Cursor de paseo invalido.');
+            }
+            $after = $this->getDocument('paseos/' . $cursor);
+            if ($after === null || ($after['userId'] ?? null) !== $uid || ($after['mascotaId'] ?? null) !== $petId) {
+                throw HttpException::badRequest('El paseo del cursor ya no esta disponible. Actualizá el historial.');
+            }
+        }
+        $query = self::walkHistoryQuery($uid, $petId, $limit + 1);
+        if ($after !== null) {
+            $query['startAt'] = [
+                'values' => [Value::encode($after['fechaInicio']), ['referenceValue' => 'projects/' . $this->projectId . '/databases/(default)/documents/paseos/' . $cursor]],
+                'before' => false,
+            ];
+        }
+        $response = $this->request('POST', rtrim($this->documentsUrl(''), '/') . ':runQuery', ['structuredQuery' => $query]);
+        $documents = [];
+        foreach ($response ?? [] as $row) {
+            if (!isset($row['document'])) continue;
+            $doc = $row['document'];
+            $documents[] = ['id' => self::idFromName($doc['name']), 'data' => Value::decodeFields($doc['fields'] ?? [])];
+        }
+        $more = count($documents) > $limit;
+        $documents = array_slice($documents, 0, $limit);
+        return ['documents' => $documents, 'nextCursor' => $more ? $documents[array_key_last($documents)]['id'] : null];
+    }
+
+    public static function walkHistoryQuery(string $uid, string $petId, int $limit): array
+    {
+        return [
+            'from' => [['collectionId' => 'paseos']],
+            'where' => ['compositeFilter' => ['op' => 'AND', 'filters' => [
+                ['fieldFilter' => ['field' => ['fieldPath' => 'userId'], 'op' => 'EQUAL', 'value' => Value::encode($uid)]],
+                ['fieldFilter' => ['field' => ['fieldPath' => 'mascotaId'], 'op' => 'EQUAL', 'value' => Value::encode($petId)]],
+            ]]],
+            'orderBy' => [
+                ['field' => ['fieldPath' => 'fechaInicio'], 'direction' => 'DESCENDING'],
+                ['field' => ['fieldPath' => '__name__'], 'direction' => 'DESCENDING'],
+            ],
+            'limit' => max(1, min(51, $limit)),
+        ];
+    }
+
     /**
      * Documentos de una coleccion, ya decodificados.
      *

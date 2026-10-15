@@ -1,5 +1,45 @@
 # PawLife API
 
+## Panel de notificaciones
+
+Abrir `/notificaciones` en el mismo despliegue de la API. Usa Firebase Auth
+(correo/contraseña o Google), comprueba administradores por UID en el servidor
+y permite buscar un destinatario por su correo completo. No permite envíos masivos.
+Las sesiones del panel viven en memoria y terminan al recargar la página.
+
+Los UIDs autorizados están en `configuracion/panel-notificaciones`, campo
+`administradores` (array). Este documento solo se administra con credenciales
+del proyecto; no se puede modificar desde la app. Para asociar cuentas existentes:
+
+```powershell
+$env:FIREBASE_TOOLS_ROOT='C:\Users\TU_USUARIO\AppData\Roaming\npm\node_modules\firebase-tools'
+node tool/configure-notification-admins.cjs --check correo@ejemplo.com
+node tool/configure-notification-admins.cjs correo@ejemplo.com
+```
+
+Requiere una sesión autorizada de Firebase CLI. El script no guarda credenciales,
+conserva los administradores existentes y autoriza `apipaw.vercel.app` para Google.
+No crea cuentas: las personas faltantes deben registrarse o ingresar en PawLife.
+`panel/firebase-config.json` contiene configuración **pública** de Firebase Web,
+igual que Flutter; nunca se coloca ahí la cuenta de servicio.
+
+Rutas: `GET /api/admin/session`, `GET /api/admin/notification-users?email=...`,
+`POST /api/admin/notifications` con `{userId, mensaje, solicitudId}`.
+`solicitudId` es un UUID generado por el navegador y permanece estable al reintentar.
+El envío usa hasta tres tokens distintos recientes, omite demo/inactivos y devuelve
+aceptaciones de FCM, fallos y dispositivos omitidos. No garantiza recepción final.
+La cuota es de 100 solicitudes por administrador y bloque UTC de dos horas.
+Los resultados quedan en `notificaciones/manual-{hash}` sin tokens ni contraseñas.
+Un envío en estado `procesando` sin resultado debe revisarse antes de reenviarlo;
+no se reintenta automáticamente para evitar duplicados.
+
+Historial paginado: `GET /api/mascotas/{id}/historial-paseos?cursor={ultimoId}`.
+Devuelve `{items, nextCursor}`, 30 por página, con filtros de dueño y mascota.
+La foto opcional del paseo es un data URI JPEG reducido de hasta 400 KiB.
+
+Verificaciones: `php tests/selftest.php`, `php tests/security_regression.php`,
+`php tests/walk_notification_features.php`.
+
 Backend en PHP de PawLife, pensado para desplegarse en Vercel. Guarda los datos
 en Firestore y autentica con los ID token que emite Firebase Auth en la app
 Flutter.

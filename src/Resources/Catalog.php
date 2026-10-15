@@ -123,6 +123,7 @@ final class Catalog
             // "rutaDetallada"; se unifico porque la ruta sin tiempos no servia
             // para nada que no hiciera ya la detallada.
             Field::route('ruta', required: true),
+            Field::string('fotoUrl'),
         ], defaultOrderBy: 'fechaInicio desc');
     }
 

@@ -31,6 +31,7 @@ require dirname(__DIR__) . '/src/bootstrap.php';
 $origin = isset($_SERVER['HTTP_ORIGIN']) ? (string) $_SERVER['HTTP_ORIGIN'] : null;
 try {
     $request = Request::fromGlobals();
+    if ($request->method === 'GET' && \PawLife\Http\NotificationPanel::serve($request->path)) exit;
 
     // El preflight del navegador no lleva token: se contesta antes de tocar nada.
     if ($request->method === 'OPTIONS') {
@@ -40,6 +41,9 @@ try {
     }
 
     $router = new Router();
+    $router->get('/api/panel-config', static fn (): Response => Response::ok(
+        \PawLife\Support\Json::decodeObject((string) file_get_contents(dirname(__DIR__) . '/panel/firebase-config.json')) ?? [],
+    ));
 
     // Sin autenticacion: sirve para comprobar que el despliegue esta vivo y que
     // las variables de entorno llegaron, sin necesidad de un token.
@@ -86,6 +90,38 @@ try {
             return $handler($request, $params, $currentUser());
         };
     };
+
+    $router->get('/api/mascotas/{mascotaId}/historial-paseos', $auth(static function (Request $r, array $p, AuthenticatedUser $u) use ($db): Response {
+        $page = $db()->walkHistoryPage($u->uid, $p['mascotaId'], $r->queryParam('cursor'));
+        return Response::ok([
+            'items' => array_map(static fn (array $doc): array => Catalog::paseos()->toJson($doc['id'], $doc['data']), $page['documents']),
+            'nextCursor' => $page['nextCursor'],
+        ]);
+    }));
+
+    $admin = static function (AuthenticatedUser $u) use ($db): void {
+        \PawLife\Auth\NotificationAdmin::assertAllowed($u, $db());
+    };
+    $router->get('/api/admin/session', $auth(static function (Request $r, array $p, AuthenticatedUser $u) use ($admin): Response {
+        $admin($u);
+        return Response::ok(['email' => $u->email, 'uid' => $u->uid]);
+    }));
+    $router->get('/api/admin/notification-users', $auth(static function (Request $r, array $p, AuthenticatedUser $u) use ($admin, $db): Response {
+        $admin($u);
+        $email = trim($r->queryParam('email', '') ?? '');
+        if (strlen($email) > 254 || filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
+            throw HttpException::badRequest('Escribí el correo completo del destinatario.');
+        }
+        $profile = FirebaseAuthAdmin::findByEmail($email);
+        if ($profile === null || $db()->getDocument('users/' . $profile['uid']) === null) {
+            return Response::ok(['items' => []]);
+        }
+        return Response::ok(['items' => [$profile]]);
+    }));
+    $router->post('/api/admin/notifications', $auth(static function (Request $r, array $p, AuthenticatedUser $u) use ($admin, $db): Response {
+        $admin($u);
+        return Response::ok((new \PawLife\Notifications\ManualNotification($db(), new \PawLife\Notifications\FcmSender()))->send($u->uid, $r->body));
+    }));
 
     $ensurePerfil = static function (AuthenticatedUser $u) use ($db): array {
         $path = "users/{$u->uid}";

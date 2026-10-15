@@ -13,6 +13,24 @@ use RuntimeException;
 
 final class FirebaseAuthAdmin
 {
+    /** Devuelve exclusivamente los datos públicos necesarios para el panel. */
+    public static function findByEmail(string $email): ?array
+    {
+        $serviceAccount = ServiceAccount::fromEnv();
+        $project = Env::get('FIREBASE_PROJECT_ID', $serviceAccount->projectId);
+        try {
+            $token = (new AccessTokenProvider($serviceAccount, AccessTokenProvider::AUTH_SCOPE))->token();
+            $response = HttpClient::send('POST', 'https://identitytoolkit.googleapis.com/v1/projects/' . rawurlencode((string) $project) . '/accounts:lookup',
+                ['Authorization' => 'Bearer ' . $token], ['email' => [$email]], 10);
+        } catch (RuntimeException $e) {
+            throw new HttpException(503, 'No se pudo consultar el destinatario.', previous: $e);
+        }
+        if ($response['status'] !== 200) throw new HttpException(503, 'Firebase no pudo buscar el destinatario.');
+        $user = (Json::decodeObject($response['body']) ?? [])['users'][0] ?? null;
+        if (!is_array($user) || ($user['disabled'] ?? false) === true) return null;
+        return ['uid' => $user['localId'], 'email' => $user['email'] ?? $email, 'nombre' => $user['displayName'] ?? ''];
+    }
+
     /** Comprueba que la cuenta sigue activa y que la sesion no fue revocada. */
     public static function assertActive(string $uid, int $authTime): void
     {

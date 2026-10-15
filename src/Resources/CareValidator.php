@@ -13,6 +13,24 @@ final class CareValidator
     public static function check(string $resource, array $data): void
     {
         $errors = [];
+        if ($resource === 'paseos') {
+            foreach (['duracionSegundos', 'distanciaMetros', 'velocidadMaximaKmh'] as $field) {
+                if (isset($data[$field]) && $data[$field] < 0) {
+                    $errors[$field] = 'No puede ser negativo.';
+                }
+            }
+            if (($data['fechaInicio'] ?? null) instanceof DateTimeInterface
+                && ($data['fechaFin'] ?? null) instanceof DateTimeInterface
+                && $data['fechaFin'] < $data['fechaInicio']) {
+                $errors['fechaFin'] = 'Debe ser posterior al inicio.';
+            }
+            $photo = $data['fotoUrl'] ?? null;
+            if ($photo !== null && (!is_string($photo) || strlen($photo) > 409600
+                || !str_starts_with($photo, 'data:image/jpeg;base64,')
+                || base64_decode(substr($photo, 23), true) === false)) {
+                $errors['fotoUrl'] = 'Usá una foto JPEG reducida desde la app.';
+            }
+        }
         if ($resource === 'vacunas') {
             if (($data['fechaAplicacion'] ?? null) instanceof DateTimeInterface
                 && ($data['proximaFecha'] ?? null) instanceof DateTimeInterface

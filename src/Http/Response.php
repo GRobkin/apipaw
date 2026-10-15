@@ -47,6 +47,8 @@ final class Response
     public function send(?string $origin = null): void
     {
         http_response_code($this->status);
+        header('Cache-Control: no-store');
+        header('X-Content-Type-Options: nosniff');
         self::sendCorsHeaders($origin);
 
         if ($this->status === 204 || $this->payload === null) {
