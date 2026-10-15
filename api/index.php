@@ -337,6 +337,7 @@ try {
         }
         $db()->deleteDocument($legacyRoot);
         $db()->deleteDocument(ReminderRateLimiter::documentPath($u->uid));
+        $db()->deleteDocument(ReminderRateLimiter::documentPath('admin-notification:' . $u->uid));
         FirebaseAuthAdmin::deleteUser($u->uid);
         return Response::noContent();
     }));

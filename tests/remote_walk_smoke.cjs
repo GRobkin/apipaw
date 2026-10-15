@@ -8,7 +8,8 @@ async function call(path, token, method = 'GET', body, expected = 200) {
   const response = await fetch(base + path, { method,
     headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), 'Content-Type': 'application/json' },
     body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(65000) });
-  const payload = await response.json();
+  const text = await response.text();
+  const payload = text ? JSON.parse(text) : null;
   if (response.status !== expected) throw new Error(`${method} ${path.split('?')[0]}: esperado ${expected}, obtenido ${response.status} (${payload.error?.message || 'sin detalle'})`);
   return payload;
 }
@@ -57,10 +58,11 @@ async function main() {
     expect(refreshed.items.length === 30 && refreshed.nextCursor === null, 'El historial no reflejó el borrado.');
     console.log('OK remoto: 31 paseos paginados, empates de fecha, borrado, aislamiento entre cuentas y panel bloqueado a usuarios comunes. No se enviaron notificaciones.');
   } finally {
-    for (const user of accounts) {
-      await call('/api/me', user.token, 'DELETE');
+    const cleanup = await Promise.allSettled(accounts.map(async (user) => {
+      await call('/api/me', user.token, 'DELETE', undefined, 204);
       await call('/api/dispositivos', user.token, 'GET', undefined, 401);
-    }
+    }));
+    if (cleanup.some((result) => result.status === 'rejected')) throw new Error('No se completó la limpieza de las cuentas temporales de esta ejecución.');
     console.log('Limpieza OK: cuentas y datos temporales eliminados; sesiones antiguas rechazadas.');
   }
 }
