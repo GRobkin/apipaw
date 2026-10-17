@@ -17,6 +17,61 @@ use PawLife\Support\Jwt;
 $passed = 0;
 $failed = 0;
 
+check('limita texto y listas antes de enviarlos a Firestore', function (): void {
+    foreach ([['nombre' => str_repeat('x', 4097)], ['notas' => str_repeat('x', 8193)],
+        ['fotoUrl' => str_repeat('x', 409601)]] as $body) {
+        try {
+            Catalog::mascotas()->forUpdate($body);
+            throw new RuntimeException('Acepto texto excesivo');
+        } catch (HttpException $e) {
+            assertSame(400, $e->status());
+        }
+    }
+    try {
+        Catalog::medicamentos()->forUpdate(['horarios' => array_fill(0, 101, '08:00')]);
+        throw new RuntimeException('Acepto demasiados horarios');
+    } catch (HttpException $e) {
+        assertSame(400, $e->status());
+    }
+    assertSame(['nombre' => str_repeat('x', 4096)], Catalog::mascotas()->forUpdate([
+        'nombre' => str_repeat('x', 4096),
+    ]));
+});
+
+check('rechaza enteros fraccionarios y numeros no finitos', function (): void {
+    foreach ([['anticipacionDias' => 1.5], ['anticipacionDias' => '1e309']] as $body) {
+        try {
+            Catalog::vacunas()->forUpdate($body);
+            throw new RuntimeException('Acepto un entero invalido');
+        } catch (HttpException $e) {
+            assertSame(400, $e->status());
+        }
+    }
+    foreach (['1e309', INF, NAN] as $value) {
+        try {
+            Catalog::pesos()->forUpdate(['valorKg' => $value]);
+            throw new RuntimeException('Acepto un numero no finito');
+        } catch (HttpException $e) {
+            assertSame(400, $e->status());
+        }
+    }
+});
+
+check('el borrado de cuenta exige autenticacion reciente antes de tocar datos', function (): void {
+    $now = 1800000000;
+    foreach ([null, $now - 301, $now + 61] as $authTime) {
+        try {
+            (new \PawLife\Auth\AuthenticatedUser('test', authTime: $authTime))
+                ->requireRecentAuthentication($now);
+            throw new RuntimeException('Acepto una autenticacion ausente, antigua o futura');
+        } catch (HttpException $e) {
+            assertSame(401, $e->status());
+        }
+    }
+    (new \PawLife\Auth\AuthenticatedUser('test', authTime: $now - 300))
+        ->requireRecentAuthentication($now);
+});
+
 check('perfil editable descarta email y privilegios', function (): void {
     assertSame(['nombre' => 'Ana'], Catalog::perfilEditable()->forUpdate([
         'nombre' => 'Ana', 'email' => 'otro@example.com',

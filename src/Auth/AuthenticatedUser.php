@@ -19,12 +19,25 @@ final class AuthenticatedUser
         public readonly ?string $name = null,
         public readonly ?string $pictureUrl = null,
         public readonly string $signInProvider = 'unknown',
+        public readonly ?int $authTime = null,
     ) {
     }
 
     public function isAnonymous(): bool
     {
         return $this->signInProvider === 'anonymous';
+    }
+
+    /** Las operaciones irreversibles requieren haber autenticado hace poco. */
+    public function requireRecentAuthentication(?int $now = null): void
+    {
+        $now ??= time();
+        if ($this->authTime === null || $this->authTime > $now + 60
+            || $now - $this->authTime > 300) {
+            throw \PawLife\Http\HttpException::unauthorized(
+                'Por seguridad, cerrá sesión y volvé a ingresar antes de eliminar la cuenta.',
+            );
+        }
     }
 
     /** @return array<string, mixed> */

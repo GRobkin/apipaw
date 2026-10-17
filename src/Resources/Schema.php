@@ -151,6 +151,14 @@ final class Schema
                     throw new ValidationError('Debe ser texto.');
                 }
                 $text = trim((string) $value);
+                $maxBytes = match ($field->name) {
+                    'fotoUrl' => 409600,
+                    'notas' => 8192,
+                    default => 4096,
+                };
+                if (strlen($text) > $maxBytes) {
+                    throw new ValidationError("Supera el limite de $maxBytes bytes.");
+                }
                 if ($text === '' && $field->required) {
                     throw new ValidationError('No puede estar vacio.');
                 }
@@ -161,14 +169,18 @@ final class Schema
                 return $text;
 
             case Field::INT:
-                if (is_bool($value) || !is_numeric($value)) {
+                if (is_bool($value) || !is_numeric($value)
+                    || !is_finite((float) $value)
+                    || floor((float) $value) !== (float) $value
+                    || (float) $value >= (float) PHP_INT_MAX
+                    || (float) $value < (float) PHP_INT_MIN) {
                     throw new ValidationError('Debe ser un numero entero.');
                 }
 
                 return (int) $value;
 
             case Field::DOUBLE:
-                if (is_bool($value) || !is_numeric($value)) {
+                if (is_bool($value) || !is_numeric($value) || !is_finite((float) $value)) {
                     throw new ValidationError('Debe ser un numero.');
                 }
 
@@ -191,9 +203,15 @@ final class Schema
                 if (!is_array($value) || !array_is_list($value)) {
                     throw new ValidationError('Debe ser una lista de textos.');
                 }
+                if (count($value) > 100) {
+                    throw new ValidationError('La lista admite hasta 100 elementos.');
+                }
                 foreach ($value as $item) {
                     if (!is_string($item)) {
                         throw new ValidationError('Todos los elementos deben ser texto.');
+                    }
+                    if (strlen($item) > 4096) {
+                        throw new ValidationError('Cada elemento admite hasta 4096 bytes.');
                     }
                 }
 
@@ -262,7 +280,8 @@ final class Schema
             $lat = (float) $lat;
             $lng = (float) $lng;
 
-            if ($lat < -90 || $lat > 90 || $lng < -180 || $lng > 180) {
+            if (!is_finite($lat) || !is_finite($lng)
+                || $lat < -90 || $lat > 90 || $lng < -180 || $lng > 180) {
                 throw new ValidationError("El punto $index esta fuera del rango de coordenadas.");
             }
 

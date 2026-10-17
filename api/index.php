@@ -319,6 +319,7 @@ try {
     );
 
     $router->delete('/api/me', $auth(static function (Request $r, array $p, AuthenticatedUser $u) use ($db): Response {
+        $u->requireRecentAuthentication();
         $legacyRoot = "users/{$u->uid}";
         foreach ($db()->listDocuments("$legacyRoot/mascotas") as $pet) {
             $petPath = "$legacyRoot/mascotas/{$pet['id']}";

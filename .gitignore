@@ -1,5 +1,8 @@
 /vendor/
 .env
+.env.*
+!.env.example
+*service-account*.json
 .vercel
 
 # Instrucciones de proyecto para Claude Code. No se versiona: el archivo real

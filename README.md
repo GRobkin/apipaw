@@ -137,6 +137,14 @@ curl http://localhost:8000/api/mascotas -H "Authorization: Bearer $TOKEN"
 
 Los ID token caducan a la hora.
 
+El borrado de cuenta exige autenticación de los últimos cinco minutos. Renovar
+el ID token no renueva esa antigüedad: si la API responde que se requiere un
+ingreso reciente, cerrar sesión y volver a ingresar antes de borrar.
+
+La API limita los textos a 4096 bytes, las notas a 8192 y las fotos a 409600;
+las listas de texto admiten hasta 100 elementos de 4096 bytes. Los enteros
+fraccionarios y los números no finitos se rechazan antes de persistir.
+
 ### Pruebas
 
 `tests/selftest.php` cubre lo que se puede probar sin tocar Firestore: el mapeo
