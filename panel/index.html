@@ -3,47 +3,101 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#12352A">
   <meta name="robots" content="noindex,nofollow">
   <title>Notificaciones · PawLife</title>
+  <link rel="icon" href="/notificaciones/icons.svg" type="image/svg+xml">
+  <link rel="preload" href="/notificaciones/assets/NunitoSans.ttf" as="font" type="font/ttf" crossorigin>
   <link rel="stylesheet" href="/notificaciones/style.css">
   <script type="module" src="/notificaciones/app.js"></script>
 </head>
 <body>
-  <header><a href="/notificaciones" aria-label="PawLife, inicio del panel"><span class="paw" aria-hidden="true">●</span> PawLife</a><span class="badge">Panel del equipo</span></header>
-  <main>
-    <section class="intro"><p class="eyebrow">CUIDAR TAMBIÉN ES ESTAR CERCA</p><h1>Un aviso a tiempo.</h1><p>Enviá una notificación a una persona que usa PawLife.</p></section>
-    <section id="login-card" class="card" aria-labelledby="login-title">
-      <h2 id="login-title">Ingresar como administrador</h2><p>Usá tu cuenta de PawLife. El acceso está reservado al equipo autorizado.</p>
-      <form id="login-form">
-        <label for="email">Correo</label><input id="email" name="email" type="email" autocomplete="username" required maxlength="254">
-        <label for="password">Contraseña</label><input id="password" name="password" type="password" autocomplete="current-password" required>
-        <button id="login-button" type="submit" disabled>Ingresar</button>
-      </form>
-      <button id="google-button" class="secondary" type="button" disabled>Ingresar con Google</button>
+  <a class="skip-link" href="#main">Ir al contenido</a>
+  <header class="topbar">
+    <a class="brand" href="/notificaciones" aria-label="PawLife, inicio del panel">
+      <span>pawlife</span><svg class="brand-paw icon" aria-hidden="true"><use href="/notificaciones/icons.svg#paw"></use></svg>
+    </a>
+  </header>
+  <main id="main" tabindex="-1">
+    <div id="global-status-slot"></div>
+    <div class="login-layout" id="login-view">
+      <section class="login-story" aria-labelledby="story-title">
+        <div class="story-wordmark" aria-hidden="true">pawlife</div>
+        <svg class="orbit-art" viewBox="0 0 800 800" aria-hidden="true"><ellipse cx="400" cy="400" rx="370" ry="240"/><ellipse cx="400" cy="400" rx="240" ry="370"/></svg>
+        <h1 id="story-title"><span>Más cerca.</span><span>Siempre.</span></h1>
+        <div class="welcome-visual">
+          <img class="welcome-photo" src="/notificaciones/assets/welcome.png" alt="Un cachorro y un gatito juntos, la imagen de bienvenida de PawLife" width="944" height="1667" fetchpriority="high">
+        </div>
+        <div class="tag-scene">
+          <button class="pet-tag" id="pet-tag" type="button" aria-label="Girar la placa de PawLife" aria-describedby="tag-instructions">
+            <span class="tag-edge" aria-hidden="true"></span>
+            <span class="tag-face" aria-hidden="true">
+              <span class="tag-hole"></span>
+              <svg class="tag-paw" viewBox="0 0 160 150"><ellipse cx="38" cy="49" rx="17" ry="23" transform="rotate(-25 38 49)"/><ellipse cx="72" cy="30" rx="17" ry="23" transform="rotate(-8 72 30)"/><ellipse cx="108" cy="35" rx="17" ry="23" transform="rotate(15 108 35)"/><ellipse cx="135" cy="65" rx="15" ry="22" transform="rotate(30 135 65)"/><path d="M43 106C43 90 58 83 68 72C79 61 94 64 101 77C108 91 124 99 121 114C118 130 101 132 88 126C74 120 63 132 51 124C45 120 43 114 43 106Z"/></svg>
+            </span>
+            <span class="tag-ring" aria-hidden="true"></span>
+          </button>
+          <p id="tag-instructions" class="sr-only">Arrastrá para girar. También podés usar las flechas del teclado y Escape para volver al inicio.</p>
+        </div>
+      </section>
+      <section id="login-card" class="login-card" aria-labelledby="login-title">
+        <h2 id="login-title">Ingresá<br>al panel.</h2>
+        <form id="login-form">
+          <label for="email">Correo electrónico</label>
+          <div class="input-wrap"><svg class="icon field-icon" aria-hidden="true"><use href="/notificaciones/icons.svg#mail"></use></svg><input id="email" name="email" type="email" autocomplete="username" placeholder="tu@correo.com" required maxlength="254"></div>
+          <label for="password">Contraseña</label>
+          <div class="input-wrap"><svg class="icon field-icon" aria-hidden="true"><use href="/notificaciones/icons.svg#lock"></use></svg><input id="password" name="password" type="password" autocomplete="current-password" placeholder="Ingresá tu contraseña" required><button class="password-toggle" id="toggle-password" type="button" aria-label="Mostrar contraseña" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="/notificaciones/icons.svg#eye"></use></svg></button></div>
+          <div id="login-status-slot"></div>
+          <button id="login-button" class="primary full-width" type="submit" disabled><span>Ingresar al panel</span><svg class="icon" aria-hidden="true"><use href="/notificaciones/icons.svg#arrow"></use></svg></button>
+        </form>
+        <div class="separator"><span>o continuá con</span></div>
+        <button id="google-button" class="secondary full-width" type="button" disabled><img src="/notificaciones/assets/google.png" width="20" height="20" alt="">Google</button>
+        <p class="access-note"><svg class="icon" aria-hidden="true"><use href="/notificaciones/icons.svg#lock"></use></svg>Solo administradores.</p>
+      </section>
+    </div>
+    <section id="send-card" class="workspace" hidden aria-labelledby="send-title">
+      <div class="workspace-header">
+        <div><h1 id="send-title" tabindex="-1">Notificaciones<span aria-hidden="true">.</span></h1></div>
+        <div class="session"><span class="session-avatar" aria-hidden="true"><svg class="icon"><use href="/notificaciones/icons.svg#person"></use></svg></span><div><span class="session-role">Administrador</span><p id="session-email"></p></div><button id="logout-button" class="icon-button" type="button" aria-label="Cerrar sesión" title="Cerrar sesión"><svg class="icon" aria-hidden="true"><use href="/notificaciones/icons.svg#logout"></use></svg></button></div>
+      </div>
+      <div id="admin-status-slot"></div>
+      <div class="dispatch-studio">
+        <div class="dispatch-toolbar">
+        <div class="recipient-dock">
+          <form id="search-form">
+            <label for="recipient-email">Destinatario</label>
+            <div class="search"><div class="input-wrap"><svg class="icon field-icon" aria-hidden="true"><use href="/notificaciones/icons.svg#mail"></use></svg><input id="recipient-email" type="email" autocomplete="off" placeholder="nombre@correo.com" required maxlength="254"></div><button type="submit" id="search-button" class="search-button"><svg class="icon" aria-hidden="true"><use href="/notificaciones/icons.svg#search"></use></svg><span>Buscar</span></button></div>
+          </form>
+          <label for="recipient" class="sr-only">Cuenta seleccionada</label>
+          <select id="recipient" form="send-form" required disabled hidden><option value="">Buscá un usuario por su correo</option></select>
+        </div>
+          <div class="canvas-tools"><h2 id="preview-title" class="sr-only">Redactar notificación</h2><button class="preview-mode" id="preview-mode" type="button" aria-pressed="false" aria-controls="message-stage">Vista plana<svg class="icon" aria-hidden="true"><use href="/notificaciones/icons.svg#arrow"></use></svg></button></div>
+        </div>
+        <form id="send-form" class="dispatch-canvas">
+          <div class="message-stage" id="message-stage">
+            <span class="stage-word" aria-hidden="true">pawlife</span>
+            <div class="preview-phone" aria-hidden="true"><span class="phone-lens"></span><svg class="phone-paw icon"><use href="/notificaciones/icons.svg#paw"></use></svg><span class="phone-home"></span></div>
+            <div class="preview" role="group" aria-label="Redacción del aviso">
+              <div class="notification-heading"><span class="notification-app"><svg class="icon" aria-hidden="true"><use href="/notificaciones/icons.svg#paw"></use></svg></span><strong>PawLife</strong><span>ahora</span></div>
+              <p class="preview-destination"><span>Para</span><strong id="preview-recipient">Seleccioná una cuenta</strong></p>
+              <label for="message" class="sr-only">Mensaje</label><textarea id="message" rows="5" maxlength="240" placeholder="Escribí el aviso" required aria-describedby="counter"></textarea><p id="counter" class="counter">0 / 240 caracteres</p>
+              <p id="preview-message" class="empty-preview" hidden></p><p id="mobile-preview-message" class="empty-preview" hidden></p>
+            </div>
+          </div>
+          <div class="dispatch-footer">
+            <div class="send-actions"><button type="submit" id="send-button" class="primary"><svg class="icon" aria-hidden="true"><use href="/notificaciones/icons.svg#send"></use></svg><span id="send-label">Revisar y enviar</span></button><button type="button" id="new-message" class="secondary" hidden>Nuevo aviso</button></div>
+          </div>
+          <p id="delivery-summary" class="delivery-result" role="status"></p>
+        </form>
+      </div>
     </section>
-    <section id="send-card" class="card" hidden aria-labelledby="send-title">
-      <div class="session"><p id="session-email"></p><button id="logout-button" class="text-button" type="button">Cerrar sesión</button></div>
-      <h2 id="send-title">Crear notificación</h2>
-      <form id="search-form">
-        <label for="recipient-email">1. Buscar destinatario</label>
-        <div class="search"><input id="recipient-email" type="email" autocomplete="off" placeholder="Correo de su cuenta en PawLife" required maxlength="254"><button type="submit" id="search-button">Buscar</button></div>
-      </form>
-      <form id="send-form">
-        <label for="recipient">Destinatario</label><select id="recipient" required disabled><option value="">Buscá un usuario por su correo</option></select>
-        <label for="message">2. Escribir el aviso</label><textarea id="message" rows="4" maxlength="240" placeholder="Ej.: ¡Hola! Ya podés consultar tu próximo cuidado en PawLife." required></textarea><p id="counter" class="hint">0 / 240 caracteres</p>
-        <div class="preview" aria-label="Vista previa de la notificación"><strong>PawLife</strong><p id="preview-message">Tu mensaje aparecerá aquí.</p></div>
-        <p class="hint">Se enviará a los 3 dispositivos registrados más recientes. El usuario necesita haber abierto la app y permitido las notificaciones.</p>
-        <button type="submit" id="send-button">Revisar y enviar</button>
-        <button type="button" id="new-message" class="secondary" hidden>Nuevo aviso</button>
-      </form>
-    </section>
-    <p id="status" role="status" aria-live="polite"></p>
+    <p id="status" role="status" aria-live="polite" aria-atomic="true"></p>
     <noscript>Activá JavaScript para usar este panel.</noscript>
-    <p class="footnote">PawLife · Los avisos se envían mediante Firebase Cloud Messaging.</p>
   </main>
-  <dialog id="confirm-dialog" aria-labelledby="confirm-title">
-    <h2 id="confirm-title">Confirmar envío</h2><p id="confirm-recipient"></p><blockquote id="confirm-message"></blockquote>
-    <div class="dialog-actions"><button id="cancel-send" class="secondary" type="button">Volver</button><button id="confirm-send" type="button">Enviar notificación</button></div>
+  <dialog id="confirm-dialog" aria-labelledby="confirm-title" aria-describedby="confirm-recipient">
+    <div class="section-icon"><svg class="icon" aria-hidden="true"><use href="/notificaciones/icons.svg#send"></use></svg></div>
+    <h2 id="confirm-title">¿Enviamos este aviso?</h2><p id="confirm-recipient"></p><blockquote id="confirm-message"></blockquote>
+    <div class="dialog-actions"><button id="cancel-send" class="secondary" type="button">Volver a editar</button><button id="confirm-send" class="primary" type="button">Enviar notificación</button></div>
   </dialog>
 </body>
 </html>

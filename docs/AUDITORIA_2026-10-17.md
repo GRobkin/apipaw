@@ -23,6 +23,9 @@ El panel solo administra envíos: **no es un CRUD de mascotas o cuidados**.
 La app consulta HTTP: no existe sincronización de datos en tiempo real. Los
 avisos locales se actualizan al sincronizar/reabrir y ante cambios propios.
 Las sesiones del panel están en memoria y no persisten al recargar por diseño.
+En esta revisión también se limpian borrador, destinatario y diálogo cuando
+cambia la sesión, y se maneja un rechazo al cerrar sesión. Verificado por revisión
+de fuente y sintaxis JS; el cambio real entre cuentas sigue pendiente de prueba.
 
 ## Correcciones de esta auditoría
 
