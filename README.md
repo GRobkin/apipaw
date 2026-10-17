@@ -4,7 +4,10 @@
 
 Abrir `/notificaciones` en el mismo despliegue de la API. Usa Firebase Auth
 (correo/contraseña o Google), comprueba administradores por UID en el servidor
-y permite buscar un destinatario por su correo completo. No permite envíos masivos.
+y permite añadir hasta 20 destinatarios por su correo completo. La confirmación
+enumera la selección explícita; no hay envío a todos los usuarios. Se procesa
+una solicitud por persona, con resultado individual e identificador estable
+al reintentar. El límite de tres dispositivos es por persona, no de usuarios.
 Las sesiones del panel viven en memoria y terminan al recargar la página.
 
 Los UIDs autorizados están en `configuracion/panel-notificaciones`, campo
@@ -39,6 +42,7 @@ La foto opcional del paseo es un data URI JPEG reducido de hasta 400 KiB.
 
 Verificaciones: `php tests/selftest.php`, `php tests/security_regression.php`,
 `php tests/walk_notification_features.php`.
+El envío a varias personas se prueba con `node --test tests/notification_batch_test.mjs`.
 
 Backend en PHP de PawLife, pensado para desplegarse en Vercel. Guarda los datos
 en Firestore y autentica con los ID token que emite Firebase Auth en la app

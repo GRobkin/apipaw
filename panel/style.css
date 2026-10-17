@@ -1337,7 +1337,7 @@ input:focus,textarea:focus,select:focus {
 .recipient-dock {position:relative;z-index:4;grid-column:2;min-width:0;min-height:132px}
 .recipient-dock label {margin:0 0 6px}
 .recipient-dock::after {content:'';position:absolute;left:50%;bottom:-25px;height:0;border-left:1px solid #5cc58f;transition:height .4s cubic-bezier(.16,1,.3,1)}
-.recipient-dock:has(#recipient:not([hidden]))::after {height:20px}
+.recipient-dock:has(#recipient-list:not([hidden]))::after {height:20px}
 .recipient-dock select {margin-top:6px;font-size:13px;min-height:44px;padding:8px 12px;overflow:hidden;text-overflow:ellipsis}
 .recipient-dock .search {gap:8px}
 .recipient-dock .search-button {background:#12352a;color:#e8f5ee}
@@ -1351,7 +1351,7 @@ input:focus,textarea:focus,select:focus {
 .dispatch-canvas .message-stage:not(:has(#preview-message:not(.empty-preview))):not(:focus-within):not(.is-flat)::after {width:340px}
 .phone-home {position:absolute;bottom:16px;left:35%;width:30%;height:4px;border-radius:4px;background:#c1e8d3;opacity:.6}
 .dispatch-studio .phone-paw {opacity:1;transition:opacity .4s}
-.dispatch-studio:has(#recipient[hidden]) .phone-paw {opacity:.4}
+.dispatch-studio:has(#recipient-list[hidden]) .phone-paw {opacity:.4}
 .dispatch-canvas .stage-word {top:130px;left:2%;font-size:clamp(190px,27vw,380px);color:#badcc9}
 .dispatch-canvas .preview-phone {top:0;left:50%;translate:-50% 0;width:var(--phone-width);height:475px;transform:rotate(5deg) rotateY(-9deg);transition:transform .8s cubic-bezier(.16,1,.3,1),box-shadow .4s}
 .dispatch-canvas .message-stage:has(#message:focus) .preview-phone,
@@ -1421,3 +1421,13 @@ input:focus,textarea:focus,select:focus {
   .story-wordmark {transform:none}
   .dispatch-canvas .preview-phone {transition:none;transform:none}
 }
+
+/* Destinatarios dentro de la misma escena, sin añadir paneles laterales. */
+.recipient-list {list-style:none;margin:10px 0 0;padding:0;display:flex;flex-wrap:wrap;gap:6px;max-height:168px;overflow:auto}
+.recipient-list[hidden] {display:none}
+.recipient-list li {display:flex;align-items:center;gap:6px;max-width:100%;padding:0 0 0 10px;background:#fff;border:1px solid #c2dbce;border-radius:12px;font-size:12px;color:#12352a}
+.recipient-list li>span {min-width:0;overflow-wrap:anywhere}
+.recipient-list button {flex-shrink:0;min-width:36px;min-height:40px;padding:6px;border:0;border-radius:10px;background:transparent;color:#12352a;font-size:22px;cursor:pointer}
+.recipient-list button:focus-visible {outline:2px solid #12352a;outline-offset:-3px}
+#confirm-recipient,.delivery-result {white-space:pre-line;overflow-wrap:anywhere}
+#confirm-recipient {max-height:180px;overflow:auto}

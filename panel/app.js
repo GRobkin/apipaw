@@ -1,3 +1,5 @@
+import { createBatch, sendBatch } from '/notificaciones/notification-batch.mjs';
+
 const $ = (id) => document.getElementById(id);
 let auth;
 let sdk;
@@ -5,6 +7,7 @@ let busy = false;
 let pendingRequest = null;
 let currentSession = 0;
 let completed = false;
+const recipients = new Map();
 
 function resetRequest() {
   pendingRequest = null;
@@ -42,6 +45,7 @@ async function api(path, body) {
   const user = auth?.currentUser;
   if (!user) throw new Error('Ingresá nuevamente para continuar.');
   const token = await user.getIdToken();
+  if (auth.currentUser !== user) throw new Error('La sesión cambió. Ingresá nuevamente.');
   const response = await fetch(path, {
     method: body ? 'POST' : 'GET',
     headers: { Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
@@ -55,18 +59,36 @@ async function api(path, body) {
 }
 
 function resetRecipient() {
-  $('recipient').replaceChildren(new Option('Buscá un usuario por su correo', ''));
-  $('recipient').disabled = true;
+  recipients.clear();
   updateRecipientScene();
   resetRequest();
 }
 
 function updateRecipientScene() {
-  const selected = !$('recipient').disabled && $('recipient').value;
-  const label = selected ? $('recipient').selectedOptions[0].textContent : 'Seleccioná una cuenta';
+  const users = [...recipients.values()];
+  const label = users.length === 1 ? users[0].label
+    : users.length ? `${users.length} personas seleccionadas` : 'Seleccioná destinatarios';
   $('preview-recipient').textContent = label;
-  $('preview-recipient').title = label;
-  $('recipient').hidden = !selected;
+  $('preview-recipient').title = users.map((user) => user.label).join('\n');
+  $('recipient-list').hidden = !users.length;
+  $('recipient-list').replaceChildren(...users.map((user) => {
+    const item = document.createElement('li');
+    const name = document.createElement('span');
+    name.textContent = user.label;
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.textContent = '×';
+    remove.setAttribute('aria-label', `Quitar ${user.label}`);
+    remove.disabled = busy;
+    remove.addEventListener('click', () => {
+      if (busy) return;
+      recipients.delete(user.uid);
+      resetRequest();
+      updateRecipientScene();
+    });
+    item.append(name, remove);
+    return item;
+  }));
 }
 
 function updatePreview(message) {
@@ -82,8 +104,6 @@ $('message').addEventListener('input', () => {
   updatePreview($('message').value);
   resetRequest();
 });
-$('recipient-email').addEventListener('input', resetRecipient);
-$('recipient').addEventListener('change', () => { resetRequest(); updateRecipientScene(); });
 $('preview-mode').addEventListener('click', () => {
   const flat = $('preview-mode').getAttribute('aria-pressed') !== 'true';
   $('preview-mode').setAttribute('aria-pressed', String(flat));
@@ -136,28 +156,40 @@ $('search-form').addEventListener('submit', async (event) => {
   busy = true;
   loadingButton('search-button', true);
   const email = $('recipient-email').value.trim();
-  resetRecipient();
   status('Buscando usuario…');
   try {
     const data = await api(`/api/admin/notification-users?email=${encodeURIComponent(email)}`);
     if (session !== currentSession || email !== $('recipient-email').value.trim()) return;
     if (!data.items.length) { status('No encontramos una cuenta activa con ese correo. La persona debe haber ingresado a PawLife.'); return; }
-    $('recipient').replaceChildren(...data.items.map((user) => new Option(`${user.nombre || 'Usuario'} · ${user.email}`, user.uid)));
-    $('recipient').disabled = false;
+    for (const user of data.items) {
+      if (recipients.size >= 20 && !recipients.has(user.uid)) {
+        status('Podés seleccionar hasta 20 personas por envío.', true);
+        return;
+      }
+      recipients.set(user.uid, { uid: user.uid, label: `${user.nombre || 'Usuario'} · ${user.email}` });
+    }
+    resetRequest();
     updateRecipientScene();
-    status('Destinatario seleccionado.', false, true);
+    $('recipient-email').value = '';
+    status(`${recipients.size} destinatarios seleccionados.`, false, true);
   } catch (error) { if (session === currentSession) status(error.message, true); }
-  finally { busy = false; loadingButton('search-button', false); }
+  finally {
+    if (session === currentSession) {
+      busy = false;
+      loadingButton('search-button', false);
+      updateRecipientScene();
+    }
+  }
 });
 
 $('send-form').addEventListener('submit', (event) => {
   event.preventDefault();
   if (busy || completed) return;
-  if (!$('recipient').value || $('recipient').disabled) { status('Buscá y seleccioná un destinatario.', true); return; }
+  if (!recipients.size) { status('Añadí al menos un destinatario.', true); return; }
   const message = $('message').value.trim();
   if (!message || Array.from(message).length > 240) { status('Escribí un aviso de hasta 240 caracteres.', true); return; }
-  pendingRequest ??= { solicitudId: crypto.randomUUID(), userId: $('recipient').value, mensaje: message };
-  $('confirm-recipient').textContent = `Para: ${$('recipient').selectedOptions[0].textContent}`;
+  pendingRequest ??= createBatch([...recipients.values()], message);
+  $('confirm-recipient').textContent = `Para ${recipients.size} persona${recipients.size === 1 ? '' : 's'}:\n${[...recipients.values()].map((user) => user.label).join('\n')}`;
   $('confirm-message').textContent = message;
   $('confirm-dialog').showModal();
 });
@@ -177,28 +209,31 @@ $('confirm-dialog').addEventListener('keydown', (event) => {
 $('confirm-send').addEventListener('click', async () => {
   if (busy || !pendingRequest) return;
   const session = currentSession;
-  const request = { ...pendingRequest };
+  const request = pendingRequest;
   busy = true;
   $('confirm-dialog').close();
   loadingButton('send-button', true);
   $('message').disabled = true;
   $('recipient-email').disabled = true;
-  $('recipient').disabled = true;
+  updateRecipientScene();
   status('Enviando a Firebase…');
   $('delivery-summary').textContent = 'Enviando…';
   $('send-form').dataset.sceneState = 'sending';
   try {
-    const result = await api('/api/admin/notifications', request);
+    const results = await sendBatch(request,
+      (body) => api('/api/admin/notifications', body),
+      () => session === currentSession,
+      (done, total) => { $('delivery-summary').textContent = `${done} / ${total} personas procesadas`; });
     if (session !== currentSession) return;
-    completed = true;
-    $('delivery-summary').textContent = `${result.aceptadas} de ${result.dispositivos} aceptadas`;
-    $('send-form').dataset.sceneState = result.fallidas > 0 ? 'warning' : 'accepted';
+    completed = results.length === request.length && results.every((row) => !row.error);
+    const accepted = results.filter((row) => row.result?.aceptadas > 0).length;
+    const failed = results.some((row) => row.error || row.result?.fallidas > 0);
+    $('delivery-summary').textContent = results.map((row) => `${row.label}: ${row.error || `${row.result.aceptadas}/${row.result.dispositivos} dispositivos aceptados por FCM${row.result.fallidas ? `; ${row.result.fallidas} fallidos` : ''}${row.result.limitados ? `; ${row.result.limitados} omitidos por límite` : ''}`}`).join('\n');
+    $('send-form').dataset.sceneState = failed ? 'warning' : 'accepted';
     $('new-message').hidden = false;
     $('new-message').focus({ preventScroll: true });
-    $('send-label').textContent = 'Envío registrado';
-    status(`Firebase aceptó ${result.aceptadas} de ${result.dispositivos} notificaciones. Fallidas: ${result.fallidas}.` +
-      (result.limitados ? ` Se omitieron ${result.limitados} dispositivos por el límite del envío.` : '') +
-      '\nLa recepción final depende de los permisos y la conexión del teléfono.', result.fallidas > 0);
+    $('send-label').textContent = completed ? 'Envío registrado' : 'Revisar y reintentar';
+    status(`FCM aceptó avisos para ${accepted} de ${request.length} personas.\nLa recepción final depende de los permisos y la conexión del teléfono.`, failed);
     // Se conserva el identificador mientras el texto y destinatario no cambien:
     // repetir tras un timeout o doble clic devuelve el mismo resultado.
   } catch (error) {
@@ -209,12 +244,13 @@ $('confirm-send').addEventListener('click', async () => {
     }
   }
   finally {
+    if (session !== currentSession) return;
     busy = false;
     loadingButton('send-button', false);
     $('send-button').disabled = completed;
     $('message').disabled = false;
     $('recipient-email').disabled = false;
-    $('recipient').disabled = !$('recipient').value;
+    updateRecipientScene();
   }
 });
 
@@ -233,6 +269,10 @@ async function initialize() {
   await sdk.setPersistence(auth, sdk.inMemoryPersistence);
   sdk.onAuthStateChanged(auth, async (user) => {
     const session = ++currentSession;
+    busy = false;
+    $('message').disabled = false;
+    $('recipient-email').disabled = false;
+    loadingButton('search-button', false);
     $('confirm-dialog').close();
     $('message').value = '';
     $('recipient-email').value = '';

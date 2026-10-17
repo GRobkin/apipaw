@@ -65,11 +65,10 @@
         <div class="dispatch-toolbar">
         <div class="recipient-dock">
           <form id="search-form">
-            <label for="recipient-email">Destinatario</label>
+            <label for="recipient-email">Añadir destinatario</label>
             <div class="search"><div class="input-wrap"><svg class="icon field-icon" aria-hidden="true"><use href="/notificaciones/icons.svg#mail"></use></svg><input id="recipient-email" type="email" autocomplete="off" placeholder="nombre@correo.com" required maxlength="254"></div><button type="submit" id="search-button" class="search-button"><svg class="icon" aria-hidden="true"><use href="/notificaciones/icons.svg#search"></use></svg><span>Buscar</span></button></div>
           </form>
-          <label for="recipient" class="sr-only">Cuenta seleccionada</label>
-          <select id="recipient" form="send-form" required disabled hidden><option value="">Buscá un usuario por su correo</option></select>
+          <ul id="recipient-list" class="recipient-list" aria-label="Destinatarios seleccionados" hidden></ul>
         </div>
           <div class="canvas-tools"><h2 id="preview-title" class="sr-only">Redactar notificación</h2><button class="preview-mode" id="preview-mode" type="button" aria-pressed="false" aria-controls="message-stage">Vista plana<svg class="icon" aria-hidden="true"><use href="/notificaciones/icons.svg#arrow"></use></svg></button></div>
         </div>
