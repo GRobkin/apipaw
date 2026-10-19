@@ -1380,7 +1380,8 @@ input:focus,textarea:focus,select:focus {
 .welcome-photo,.login-story:hover .welcome-photo {transform:translate(var(--scene-x,0px),var(--scene-y,0px)) scale(1.13) rotate(9deg)}
 /* Keep both faces below the editorial title on large desktop displays. */
 @media(min-width:1600px) and (min-height:900px) {
-  .welcome-photo {object-position:50% 16%}
+  .welcome-photo {object-position:50% 25%}
+  .welcome-visual {inset:24% 10% 6% 18%}
 }
 .tag-scene {translate:calc(var(--scene-x,0px) * -1.4) calc(var(--scene-y,0px) * -1.4)}
 @keyframes orbit-trace {from {stroke-dashoffset:2400}to {stroke-dashoffset:0}}
