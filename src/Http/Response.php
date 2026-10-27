@@ -34,9 +34,10 @@ final class Response
     }
 
     /** @param array<string, mixed> $details */
-    public static function error(int $status, string $message, array $details = []): self
+    public static function error(int $status, string $message, array $details = [], ?string $code = null): self
     {
         $payload = ['error' => ['status' => $status, 'message' => $message]];
+        if ($code !== null) $payload['error']['code'] = $code;
         if ($details !== []) {
             $payload['error']['details'] = $details;
         }

@@ -97,6 +97,7 @@ expect($query['startAt']['before'] === false, 'el cursor debe empezar despues de
 expect($query['startAt']['values'][1]['referenceValue'] === reminder('r499', 'a', $date)['cursor']['nombre'], 'el cursor debe usar la ruta completa');
 
 $db = new MemoryReminderStore();
+$db->documents['users/victima'] = ['estadoCuenta' => 'activa'];
 $sender = new MemoryPushSender();
 for ($i = 0; $i < 13000; $i++) {
     $db->reminders[] = reminder(sprintf('a%05d', $i), 'atacante', $date, true);
@@ -114,6 +115,7 @@ expect($dispatcher->dispatch($now)['enviados'] === 1, 'el segundo ciclo debe alc
 expect($sender->sent === [['victim-token', 'zvictima']], 'el aviso de la otra cuenta debe salir');
 
 $db2 = new MemoryReminderStore();
+$db2->documents['users/dueno'] = ['estadoCuenta' => 'activa'];
 $sender2 = new MemoryPushSender();
 $db2->reminders[] = reminder('uno', 'dueno', $date);
 for ($i = 0; $i < 11; $i++) {
@@ -170,6 +172,11 @@ foreach ([null, '1'] as $declaredLength) {
         expect($e->status() === 413, 'el limite real debe prevalecer sobre Content-Length');
     }
 }
-expect($decode('{mal JSON', null) === [], 'se conserva el manejo de JSON invalido');
+try {
+    $decode('{mal JSON', null);
+    throw new RuntimeException('Un JSON inválido no debe convertirse en una escritura vacía.');
+} catch (HttpException $e) {
+    expect($e->status() === 400, 'JSON inválido debe dar 400');
+}
 
 echo "TODO OK: seguridad de paginacion y tamano de solicitudes\n";

@@ -84,7 +84,16 @@ final class Request
         if (strlen($raw) > self::MAX_BODY_BYTES) {
             throw new HttpException(413, 'El cuerpo de la solicitud es demasiado grande.');
         }
-        return Json::decodeObject($raw) ?? [];
+        if (trim($raw) === '') return [];
+        try {
+            $decoded = json_decode($raw, true, 32, JSON_THROW_ON_ERROR);
+        } catch (\JsonException) {
+            throw HttpException::badRequest('El cuerpo debe ser un objeto JSON válido.');
+        }
+        if (!is_array($decoded) || !str_starts_with(ltrim($raw), '{')) {
+            throw HttpException::badRequest('El cuerpo debe ser un objeto JSON válido.');
+        }
+        return $decoded;
     }
 
     public function header(string $name): ?string

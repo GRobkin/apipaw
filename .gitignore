@@ -1,4 +1,9 @@
 /vendor/
+/node_modules/
+/tmp-npm-cache/
+__pycache__/
+*.fernet
+*.partial
 .env
 .env.*
 !.env.example

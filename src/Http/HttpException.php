@@ -20,6 +20,7 @@ class HttpException extends RuntimeException
         string $message,
         private readonly array $details = [],
         ?Throwable $previous = null,
+        public readonly ?string $errorCode = null,
     ) {
         parent::__construct($message, $status, $previous);
     }

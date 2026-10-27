@@ -42,8 +42,13 @@ final class ManualNotification
             if (!isset($existing['resultado'])) throw new HttpException(409, 'Este envío ya está en proceso.');
             return $existing['resultado'];
         }
-        if ($this->db->getDocument('users/' . $data['userId']) === null) {
+        $profile = $this->db->getDocument('users/' . $data['userId']);
+        if ($profile === null) {
             throw HttpException::notFound('El destinatario ya no tiene perfil en PawLife.');
+        }
+        if (($profile['estadoCuenta'] ?? 'activa') !== 'activa'
+            || !\PawLife\Privacy\PrivacyService::preferences($profile)['avisosEquipo']) {
+            throw new HttpException(422, 'La cuenta no admite avisos del equipo.', errorCode: 'RECIPIENT_NOTIFICATIONS_DISABLED');
         }
         $devices = $this->db->queryDocuments('dispositivos', ['userId' => $data['userId']], 'actualizadoEn desc', 30);
         $tokens = [];
@@ -65,6 +70,12 @@ final class ManualNotification
         $selected = array_slice(array_keys($tokens), 0, 3);
         $result = ['id' => $id, 'aceptadas' => 0, 'fallidas' => 0, 'dispositivos' => count($selected), 'limitados' => max(0, count($tokens) - 3)];
         foreach ($selected as $token) {
+            $current = $this->db->getDocument('users/' . $data['userId']);
+            if ($current === null || ($current['estadoCuenta'] ?? 'activa') !== 'activa'
+                || !\PawLife\Privacy\PrivacyService::preferences($current)['avisosEquipo']) {
+                $result['fallidas'] += count($selected) - $result['aceptadas'] - $result['fallidas'];
+                break;
+            }
             try {
                 $this->fcm->send($token, $id, '', 'manual', $data['mensaje']);
                 $result['aceptadas']++;

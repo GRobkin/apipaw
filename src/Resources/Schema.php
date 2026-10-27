@@ -28,6 +28,23 @@ final class Schema
     ) {
     }
 
+    public function validateOrderBy(?string $value): ?string
+    {
+        if ($value === null) return null;
+        if (preg_match('/^([a-zA-Z][a-zA-Z0-9_]*)\s*(asc|desc)?$/iD', trim($value), $matches) !== 1) {
+            throw HttpException::badRequest('Orden de consulta inválido.');
+        }
+        $allowed = array_map(static fn (Field $field): string => $field->name,
+            array_filter($this->fields, static fn (Field $field): bool =>
+                !in_array($field->type, [Field::ROUTE, Field::STRING_LIST], true)
+                && !in_array($field->name, ['fotoUrl', 'notas', 'token'], true)));
+        $allowed = [...$allowed, 'creadoEn', 'actualizadoEn'];
+        if (!in_array($matches[1], $allowed, true)) {
+            throw HttpException::badRequest('Ese campo no permite ordenar la consulta.');
+        }
+        return $matches[1] . ' ' . strtolower($matches[2] ?? 'asc');
+    }
+
     /**
      * Valida el cuerpo de un POST: exige los campos obligatorios y rellena los
      * que tengan valor por defecto.
@@ -262,6 +279,9 @@ final class Schema
     {
         if (!is_array($value) || !array_is_list($value)) {
             throw new ValidationError('Debe ser una lista de puntos {lat, lng, timestamp}.');
+        }
+        if (count($value) > \PawLife\Firestore\DocumentBudget::MAX_ROUTE_POINTS) {
+            throw new ValidationError('El recorrido supera el límite de puntos del registro. No se recortó la ruta.');
         }
 
         $points = [];

@@ -32,7 +32,8 @@ final class ReminderRateLimiter
             if ($count >= self::MAX_WRITES) {
                 throw new HttpException(429, 'Demasiados cambios de recordatorios. Intenta de nuevo mas tarde.');
             }
-            $data = ['window' => $window, 'count' => $count + 1, 'actualizadoEn' => $now];
+            $owner = str_starts_with($uid, 'admin-notification:') ? substr($uid, strlen('admin-notification:')) : $uid;
+            $data = ['userId' => $owner, 'window' => $window, 'count' => $count + 1, 'actualizadoEn' => $now];
             try {
                 if ($existing === null) {
                     $this->db->createDocument('system', $data, $id);

@@ -124,6 +124,8 @@ final class Catalog
             // para nada que no hiciera ya la detallada.
             Field::route('ruta', required: true),
             Field::string('fotoUrl'),
+            new Field('imagenTipo', Field::STRING, default: 'desconocida',
+                allowedValues: ['foto', 'mapa', 'desconocida']),
         ], defaultOrderBy: 'fechaInicio desc');
     }
 

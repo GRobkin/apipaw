@@ -45,6 +45,16 @@ rejected(fn () => $manual->send('admin', array_replace($body, ['mensaje' => 'Otr
 rejected(fn () => ManualNotification::validate(array_replace($body, ['userId' => '../users/ajeno'])), 400);
 rejected(fn () => ManualNotification::validate(array_replace($body, ['mensaje' => str_repeat('a', 241)])), 400);
 rejected(fn () => ManualNotification::validate(array_replace($body, ['mensaje' => '  '])), 400);
+$store->documents['users/destino']['preferencias'] = ['avisosEquipo' => false];
+rejected(fn () => $manual->send('admin', array_replace($body, ['solicitudId' => '12345678-1234-1234-1234-123456789013'])), 422);
+expect(count($sender->sent) === 3, 'No debe enviar después de desactivar avisos del equipo');
+$muted = new MemoryReminderStore();
+$muted->documents['users/dueno'] = ['preferencias' => ['recordatoriosCuidados' => false]];
+$muted->reminders[] = reminder('muted', 'dueno', $date);
+$muted->devices['dueno'] = [['id' => 'd', 'data' => ['token' => 'test-muted']]];
+$mutedSender = new MemoryPushSender();
+(new \PawLife\Notifications\PushDispatcher($muted, $mutedSender))->dispatch($now);
+expect($mutedSender->sent === [], 'No debe enviar recordatorios desactivados');
 
 $query = FirestoreClient::walkHistoryQuery('dueno', 'mascota', 9999);
 expect($query['limit'] === 51, 'la consulta debe estar acotada');

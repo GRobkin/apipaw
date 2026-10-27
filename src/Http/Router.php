@@ -109,6 +109,7 @@ final class Router
                 if ($value === '') {
                     return null;
                 }
+                \PawLife\Support\ResourceId::validate($value);
                 $params[substr($segment, 1, -1)] = $value;
                 continue;
             }

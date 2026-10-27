@@ -47,11 +47,27 @@ final class ResourceController
     {
         $path = $this->resolveCollection($user, $params);
 
-        $orderBy = $request->queryParam('orderBy', $this->schema->defaultOrderBy);
+        $orderBy = $this->schema->validateOrderBy($request->queryParam('orderBy', $this->schema->defaultOrderBy));
         $limit = $request->queryParam('limit');
 
-        $numericLimit = $limit !== null && ctype_digit($limit) ? max(1, (int) $limit) : null;
+        if ($limit !== null && (!ctype_digit($limit) || (int) $limit < 1 || (int) $limit > 3000)) {
+            throw HttpException::badRequest('El límite debe estar entre 1 y 3000.');
+        }
+        $numericLimit = $limit === null ? null : (int) $limit;
         $filters = $this->scope === null ? [] : ($this->scope)($user, $params);
+        if ($request->queryParam('pageSize') !== null) {
+            $size = $request->queryParam('pageSize');
+            if (!ctype_digit($size) || (int) $size < 1 || (int) $size > 100) {
+                throw HttpException::badRequest('El tamaño de página debe estar entre 1 y 100.');
+            }
+            $cap = match ($path) { 'mascotas' => 4, 'paseos' => 2, default => 100 };
+            $page = $this->firestore->queryPage($path, $filters, $orderBy,
+                min((int) $size, $numericLimit ?? 100, $cap), $request->queryParam('cursor'));
+            return Response::ok([
+                'items' => array_map(fn (array $doc): array => $this->schema->toJson($doc['id'], $doc['data']), $page['documents']),
+                'nextCursor' => $page['nextCursor'],
+            ]);
+        }
         $documents = $filters === []
             ? $this->firestore->listDocuments($path, $orderBy, $numericLimit)
             : $this->firestore->queryDocuments($path, $filters, $orderBy, $numericLimit);
@@ -85,6 +101,7 @@ final class ResourceController
         $path = $this->resolveCollection($user, $params);
 
         $data = $this->schema->forCreate($request->body);
+        $data = PhotoInput::prepare($data, beforeDecode: fn () => (new \PawLife\Security\WriteQuota($this->firestore))->reservePhotoAttempt($user->uid));
         if ($this->scope !== null) {
             $data = array_merge($data, ($this->scope)($user, $params));
         }
@@ -95,6 +112,7 @@ final class ResourceController
         $now = new DateTimeImmutable();
         $data['creadoEn'] = $now;
         $data['actualizadoEn'] = $now;
+        \PawLife\Firestore\DocumentBudget::assertFits($data);
 
         $created = $this->firestore->createDocument($path, $data, self::requestedId($request));
 
@@ -130,19 +148,22 @@ final class ResourceController
         $id = $this->idFrom($params);
         $path = $this->resolveCollection($user, $params) . '/' . $id;
 
-        $existing = $this->firestore->getDocument($path);
-        if ($existing === null) {
+        $versioned = $this->firestore->getDocumentVersioned($path);
+        if ($versioned === null) {
             throw HttpException::notFound("No existe {$this->schema->name} con id $id.");
         }
+        $existing = $versioned['data'];
         $this->assertOwned($existing, $user, $params);
 
         $data = $this->schema->forUpdate($request->body);
+        $data = PhotoInput::prepare($data, $existing, fn () => (new \PawLife\Security\WriteQuota($this->firestore))->reservePhotoAttempt($user->uid));
         if ($this->validateWrite !== null) {
             ($this->validateWrite)(array_merge($existing, $data), $user);
         }
         $data['actualizadoEn'] = new DateTimeImmutable();
+        \PawLife\Firestore\DocumentBudget::assertFits(array_merge($existing, $data));
 
-        $updated = $this->firestore->patchDocument($path, $data);
+        $updated = $this->firestore->patchDocument($path, $data, $versioned['updateTime']);
 
         return Response::ok($this->schema->toJson($updated['id'], $updated['data']));
     }

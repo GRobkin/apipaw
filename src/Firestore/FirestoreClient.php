@@ -24,7 +24,7 @@ use PawLife\Support\Json;
  * reglas sino de que cada consulta de colecciones raíz filtra por userId,
  * obtenido del ID token verificado (ver Auth\FirebaseTokenVerifier).
  */
-final class FirestoreClient implements ReminderStore
+final class FirestoreClient implements ReminderStore, AtomicStore
 {
     private const BASE = 'https://firestore.googleapis.com/v1';
 
@@ -33,8 +33,52 @@ final class FirestoreClient implements ReminderStore
 
     public function __construct(
         private readonly string $projectId,
-        private readonly AccessTokenProvider $tokens,
+        private readonly ?AccessTokenProvider $tokens,
+        private readonly mixed $transport = null,
     ) {
+        if ($transport !== null && !is_callable($transport)) throw new \InvalidArgumentException('Transporte inválido.');
+        if ($transport === null && $tokens === null) throw new \InvalidArgumentException('Falta autenticación de Firestore.');
+    }
+
+    public function commit(array $operations): array
+    {
+        AtomicWrite::build($this->projectId, $operations);
+        return $this->rawCommit(\PawLife\Privacy\AccountLifecycle::guard($this, $operations));
+    }
+
+    private function rawCommit(array $operations): array
+    {
+        $result = $this->request('POST', rtrim($this->documentsUrl(''), '/') . ':commit',
+            AtomicWrite::build($this->projectId, $operations)) ?? [];
+        if (!isset($result['writeResults'], $result['commitTime']) || !is_array($result['writeResults'])
+            || count($result['writeResults']) !== count($operations) || !is_string($result['commitTime'])) {
+            throw new HttpException(502, 'No se pudo confirmar el resultado de la operación.', errorCode: 'COMMIT_RESULT_UNKNOWN');
+        }
+        return $result;
+    }
+
+    /** Internal capability: its validator permits only this account's deletion plan. */
+    public function deletionStore(): \PawLife\Privacy\AccountDeletionStore
+    {
+        return new \PawLife\Privacy\AccountDeletionStore($this, fn (array $operations): array => $this->rawCommit($operations));
+    }
+
+    public function queryPage(string $collection, array $filters, ?string $orderBy = null, int $size = 30, ?string $cursor = null): array
+    {
+        \PawLife\Support\ResourceId::validate($collection);
+        if ($cursor !== null) \PawLife\Support\ResourceId::validate($cursor);
+        $after = $cursor === null ? null : $this->getDocument("$collection/$cursor");
+        $query = QueryPage::build($this->projectId, $collection, $filters, $orderBy, $size, $cursor, $after);
+        $rows = $this->request('POST', rtrim($this->documentsUrl(''), '/') . ':runQuery', ['structuredQuery' => $query]) ?? [];
+        $documents = [];
+        foreach ($rows as $row) {
+            if (!isset($row['document'])) continue;
+            $doc = $row['document'];
+            $documents[] = ['id' => self::idFromName($doc['name']), 'data' => Value::decodeFields($doc['fields'] ?? [])];
+        }
+        $more = count($documents) > $size;
+        $documents = array_slice($documents, 0, $size);
+        return ['documents' => $documents, 'nextCursor' => $more ? $documents[array_key_last($documents)]['id'] : null];
     }
 
     public static function fromEnv(): self
@@ -45,6 +89,33 @@ final class FirestoreClient implements ReminderStore
             Env::get('FIREBASE_PROJECT_ID', $serviceAccount->projectId) ?? $serviceAccount->projectId,
             new AccessTokenProvider($serviceAccount),
         );
+    }
+
+    /** CLI backup only: keep raw REST types and enumerate even missing parents. */
+    public function exportPage(string $parent, ?string $collection, ?string $token, int $size = 20): array
+    {
+        if ($size < 1 || $size > 20) throw new \InvalidArgumentException('Página de exportación inválida.');
+        if ($parent !== '') {
+            $segments = explode('/', $parent);
+            if (count($segments) % 2 !== 0) throw new \InvalidArgumentException('Padre de exportación inválido.');
+            foreach ($segments as $segment) \PawLife\Support\ResourceId::validate($segment);
+        }
+        if ($collection !== null) \PawLife\Support\ResourceId::validate($collection);
+        if ($token !== null && (strlen($token) > 8192 || $token === '')) throw new \InvalidArgumentException('Token inválido.');
+        if ($collection === null) {
+            $result = $this->request('POST', rtrim($this->documentsUrl($parent), '/') . ':listCollectionIds',
+                ['pageSize' => 100] + ($token === null ? [] : ['pageToken' => $token])) ?? [];
+            $field = 'collectionIds';
+        } else {
+            $result = $this->request('GET', $this->documentsUrl(ltrim("$parent/$collection", '/'),
+                ['pageSize' => (string) $size, 'showMissing' => 'true'] + ($token === null ? [] : ['pageToken' => $token]))) ?? [];
+            $field = 'documents';
+        }
+        if (array_diff(array_keys($result), [$field, 'nextPageToken']) !== []
+            || (isset($result[$field]) && (!is_array($result[$field]) || !array_is_list($result[$field])))) {
+            throw new HttpException(502, 'Respuesta de exportación inválida.', errorCode: 'DEPENDENCY_RESPONSE_INVALID');
+        }
+        return $result;
     }
 
     /** Página estable de paseos de una mascota; el cursor jamás cambia el dueño. */
@@ -303,18 +374,10 @@ final class FirestoreClient implements ReminderStore
      */
     public function createDocument(string $collectionPath, array $data, ?string $documentId = null): array
     {
-        $query = $documentId !== null ? ['documentId' => $documentId] : [];
-
-        $response = $this->request(
-            'POST',
-            $this->documentsUrl($collectionPath, $query),
-            ['fields' => Value::encodeFields($data)],
-        );
-
-        return [
-            'id' => self::idFromName((string) ($response['name'] ?? '')),
-            'data' => Value::decodeFields($response['fields'] ?? []),
-        ];
+        DocumentBudget::assertFits($data);
+        $id = $documentId ?? bin2hex(random_bytes(16));
+        $this->commit([['type' => 'create', 'path' => $collectionPath . '/' . $id, 'data' => $data]]);
+        return ['id' => $id, 'data' => $data];
     }
 
     /**
@@ -328,31 +391,18 @@ final class FirestoreClient implements ReminderStore
      */
     public function patchDocument(string $documentPath, array $data, ?string $expectedUpdateTime = null): array
     {
-        $query = [];
-        foreach (array_keys($data) as $field) {
-            $query[] = ['updateMask.fieldPaths', (string) $field];
-        }
-        // Exige que el documento ya exista: si no, un PATCH sobre un id
-        // inventado lo crearia en silencio y el cliente creeria que edito algo.
-        $query[] = $expectedUpdateTime === null
-            ? ['currentDocument.exists', 'true']
-            : ['currentDocument.updateTime', $expectedUpdateTime];
-
-        $response = $this->request(
-            'PATCH',
-            $this->documentsUrl($documentPath, $query),
-            ['fields' => Value::encodeFields($data)],
-        );
-
-        return [
-            'id' => self::idFromName((string) ($response['name'] ?? '')),
-            'data' => Value::decodeFields($response['fields'] ?? []),
-        ];
+        DocumentBudget::assertFits($data);
+        $existing = $this->getDocumentVersioned($documentPath);
+        if ($existing === null) throw HttpException::notFound('El recurso no existe.');
+        $this->commit([['type' => 'patch', 'path' => $documentPath, 'data' => $data,
+            'updateTime' => $expectedUpdateTime ?? $existing['updateTime']]]);
+        return ['id' => self::idFromName($documentPath), 'data' => array_merge($existing['data'], $data)];
     }
 
     public function deleteDocument(string $documentPath): void
     {
-        $this->request('DELETE', $this->documentsUrl($documentPath), allowNotFound: true);
+        $existing = $this->getDocumentVersioned($documentPath);
+        if ($existing !== null) $this->commit([['type' => 'delete', 'path' => $documentPath, 'updateTime' => $existing['updateTime']]]);
     }
 
     /**
@@ -398,7 +448,7 @@ final class FirestoreClient implements ReminderStore
      */
     private function request(string $method, string $url, ?array $body = null, bool $allowNotFound = false): ?array
     {
-        $response = HttpClient::send(
+        $response = $this->transport !== null ? ($this->transport)($method, $url, $body) : HttpClient::send(
             $method,
             $url,
             ['Authorization' => 'Bearer ' . $this->tokens->token()],
@@ -410,6 +460,9 @@ final class FirestoreClient implements ReminderStore
         $payload = Json::decodeObject($response['body']) ?? [];
 
         if ($status >= 200 && $status < 300) {
+            if ($status !== 204 && Json::decodeObject($response['body']) === null) {
+                throw new HttpException(502, 'Respuesta de Firestore inválida.', errorCode: 'DEPENDENCY_RESPONSE_INVALID');
+            }
             return $payload;
         }
 
@@ -421,27 +474,28 @@ final class FirestoreClient implements ReminderStore
             throw HttpException::notFound('El recurso no existe.');
         }
 
-        $message = (string) ($payload['error']['message'] ?? $response['body']);
-
         if ($status === 409) {
             throw new HttpException(409, 'Ya existe un documento con ese id.');
         }
 
-        if ($status === 412) {
+        $conditionalWrite = str_ends_with($url, ':commit')
+            || ($method === 'PATCH' && str_contains($url, 'currentDocument.'));
+        if ($status === 412 || ($status === 400 && $conditionalWrite
+            && ($payload['error']['status'] ?? null) === 'FAILED_PRECONDITION')) {
             throw new HttpException(409, 'El documento cambio durante la operacion.');
         }
 
         if ($status === 400) {
-            throw HttpException::badRequest("Firestore rechazo la operacion: $message");
+            throw new HttpException(400, 'No se pudo realizar la operación solicitada.', errorCode: 'FIRESTORE_INVALID_OPERATION');
         }
 
         if ($status === 401 || $status === 403) {
             // Esto es culpa de la configuracion del servidor, no del cliente:
             // credenciales mal puestas o API de Firestore sin habilitar.
-            throw new HttpException(500, "El backend no tiene permiso sobre Firestore: $message");
+            throw new HttpException(500, 'El backend no tiene permiso sobre Firestore.', errorCode: 'FIRESTORE_PERMISSION_ERROR');
         }
 
-        throw new HttpException(502, "Firestore respondio $status: $message");
+        throw new HttpException(502, 'Firestore no pudo completar la operación.', errorCode: 'FIRESTORE_UNAVAILABLE');
     }
 
     /** "projects/p/databases/(default)/documents/users/u/mascotas/abc" => "abc" */

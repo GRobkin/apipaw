@@ -14,6 +14,10 @@ final class CareValidator
     {
         $errors = [];
         if ($resource === 'paseos') {
+            if (array_key_exists('imagenTipo', $data)
+                && !in_array($data['imagenTipo'], ['foto', 'mapa', 'desconocida'], true)) {
+                $errors['imagenTipo'] = 'Indicá foto, mapa o desconocida.';
+            }
             foreach (['duracionSegundos', 'distanciaMetros', 'velocidadMaximaKmh'] as $field) {
                 if (isset($data[$field]) && $data[$field] < 0) {
                     $errors[$field] = 'No puede ser negativo.';

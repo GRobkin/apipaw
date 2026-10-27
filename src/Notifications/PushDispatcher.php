@@ -63,6 +63,12 @@ final class PushDispatcher
                     $devicesByUser[$uid] = $this->db->queryDocuments('dispositivos', ['userId' => $uid]);
                 }
                 foreach ($devicesByUser[$uid] as $device) {
+                    $profile = $this->db->getDocument('users/' . $uid);
+                    if ($profile === null || ($profile['estadoCuenta'] ?? 'activa') !== 'activa'
+                        || !\PawLife\Privacy\PrivacyService::preferences($profile)['recordatoriosCuidados']) {
+                        $stats['omitidos']++;
+                        continue;
+                    }
                     $info = $device['data'];
                     $token = $info['token'] ?? null;
                     if (!is_string($token) || $token === '' || ($info['activo'] ?? true) === false || ($info['demo'] ?? false) === true) {
@@ -98,7 +104,8 @@ final class PushDispatcher
                         $this->db->patchDocument('notificaciones/' . $noticeId, [
                             'estado' => 'fallida',
                             'proximoIntento' => (new DateTimeImmutable('now'))->modify('+10 minutes'),
-                            'ultimoError' => substr($e->getMessage(), 0, 160),
+                            'ultimoError' => $e instanceof HttpException && $e->errorCode !== null
+                                ? $e->errorCode : 'PUSH_ATTEMPT_FAILED',
                             'actualizadoEn' => new DateTimeImmutable('now'),
                         ]);
                         $stats['fallidos']++;
