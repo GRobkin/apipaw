@@ -68,6 +68,12 @@ try {
         return Response::ok($result);
     });
 
+    // Termina borrados de cuenta pendientes: no depende de que el token del usuario siga vivo.
+    $router->post('/api/internal/delete-accounts', static function (Request $r): Response {
+        \PawLife\Notifications\CronSignature::verify($r, \PawLife\Notifications\CronSignature::DELETE_ACCOUNTS_PATH);
+        return Response::ok((new \PawLife\Privacy\AccountDeletionService(FirestoreClient::fromEnv()))->runPending(2));
+    });
+
     // El usuario se verifica una sola vez y solo cuando la ruta lo necesita,
     // para que /api/health siga respondiendo aunque el token sea invalido.
     $user = null;
@@ -127,7 +133,7 @@ try {
         $path = "users/{$u->uid}";
         $data = $db()->getDocument($path);
         if ($data !== null) {
-            return $data;
+            return \PawLife\Auth\EmailSync::sync($db(), $u, $data);
         }
         $now = new DateTimeImmutable();
         $inicial = [
@@ -159,10 +165,44 @@ try {
 
     $router->patch('/api/me', $auth(static function (Request $r, array $p, AuthenticatedUser $u) use ($db, $ensurePerfil): Response {
         $data = Catalog::perfilEditable()->forUpdate($r->body);
-        $ensurePerfil($u);
+        $existing = $ensurePerfil($u);
+        $data = \PawLife\Resources\PhotoInput::prepare($data, $existing,
+            static fn () => (new \PawLife\Security\WriteQuota($db()))->reservePhotoAttempt($u->uid));
         $data['actualizadoEn'] = new DateTimeImmutable();
+        \PawLife\Firestore\DocumentBudget::assertFits(array_merge($existing, $data));
         $actualizado = $db()->patchDocument("users/{$u->uid}", $data);
         return Response::ok(Catalog::perfil()->toJson($u->uid, $actualizado['data']));
+    }));
+
+    $privacy = static fn (): \PawLife\Privacy\PrivacyService => new \PawLife\Privacy\PrivacyService($db(), [
+        'responsable' => Env::get('PRIVACY_RESPONSIBLE', 'Soporte PawLife'),
+        'email' => Env::get('PRIVACY_CONTACT_EMAIL', 'pawlife.support@gmail.com')]);
+    $exports = static fn (): \PawLife\Privacy\ExportService => new \PawLife\Privacy\ExportService($db());
+    $router->get('/api/me/privacy', $auth(static function (Request $r, array $p, AuthenticatedUser $u) use ($privacy, $ensurePerfil): Response {
+        $ensurePerfil($u);
+        return Response::ok($privacy()->info($u->uid));
+    }));
+    $router->patch('/api/me/preferences', $auth(static function (Request $r, array $p, AuthenticatedUser $u) use ($privacy): Response {
+        return Response::ok($privacy()->updatePreferences($u->uid, $r->body));
+    }));
+    $router->post('/api/me/privacy-requests', $auth(static function (Request $r, array $p, AuthenticatedUser $u) use ($privacy): Response {
+        return new Response(202, $privacy()->request($u->uid, $r->body));
+    }));
+    $router->get('/api/me/privacy-requests', $auth(static function (Request $r, array $p, AuthenticatedUser $u) use ($privacy): Response {
+        return Response::ok($privacy()->requests($u->uid, $r->queryParam('cursor')));
+    }));
+    $router->get('/api/me/privacy-requests/{id}', $auth(static function (Request $r, array $p, AuthenticatedUser $u) use ($privacy): Response {
+        return Response::ok($privacy()->requestStatus($u->uid, $p['id']));
+    }));
+    $router->post('/api/me/exports', $auth(static function (Request $r, array $p, AuthenticatedUser $u) use ($exports): Response {
+        return new Response(202, $exports()->start($u));
+    }));
+    $router->get('/api/me/exports/{id}', $auth(static function (Request $r, array $p, AuthenticatedUser $u) use ($exports): Response {
+        return Response::ok($exports()->page($u, $p['id'], $r->queryParam('cursor')));
+    }));
+    $router->delete('/api/me/exports/{id}', $auth(static function (Request $r, array $p, AuthenticatedUser $u) use ($exports): Response {
+        $exports()->cancel($u, $p['id']);
+        return Response::noContent();
     }));
 
     /**
@@ -318,47 +358,58 @@ try {
         $validateRecordatorio,
     );
 
-    $router->delete('/api/me', $auth(static function (Request $r, array $p, AuthenticatedUser $u) use ($db): Response {
-        $u->requireRecentAuthentication();
-        $legacyRoot = "users/{$u->uid}";
-        foreach ($db()->listDocuments("$legacyRoot/mascotas") as $pet) {
-            $petPath = "$legacyRoot/mascotas/{$pet['id']}";
-            foreach (['vacunas', 'medicamentos', 'alimentaciones', 'pesos', 'paseos'] as $child) {
-                $db()->deleteCollection("$petPath/$child");
-            }
-            $db()->deleteDocument($petPath);
-        }
-        foreach (['recordatorios', 'dispositivos'] as $child) {
-            $db()->deleteCollection("$legacyRoot/$child");
-        }
-        foreach (['mascotas', 'vacunas', 'medicamentos', 'alimentaciones', 'pesos', 'paseos', 'recordatorios', 'dispositivos', 'notificaciones'] as $collection) {
-            foreach ($db()->queryDocuments($collection, ['userId' => $u->uid]) as $document) {
-                $db()->deleteDocument($collection . '/' . $document['id']);
-            }
-        }
-        $db()->deleteDocument($legacyRoot);
-        $db()->deleteDocument(ReminderRateLimiter::documentPath($u->uid));
-        $db()->deleteDocument(ReminderRateLimiter::documentPath('admin-notification:' . $u->uid));
-        FirebaseAuthAdmin::deleteUser($u->uid);
+    // Borrado reanudable: reserva la cuenta (barrera persistente) y avanza por pasos.
+    // Si no termina dentro de esta peticion, 202 y el worker de Cloudflare lo completa.
+    $deletion = static fn (): \PawLife\Privacy\AccountDeletionService => new \PawLife\Privacy\AccountDeletionService($db());
+    $router->delete('/api/me', $auth(static function (Request $r, array $p, AuthenticatedUser $u) use ($deletion): Response {
+        $service = $deletion();
+        $service->start($u);
+        $status = $service->resume($u->uid);
+        return $status['estado'] === 'completa' ? Response::noContent() : new Response(202, $status);
+    }));
+    $router->get('/api/me/deletion', $auth(static function (Request $r, array $p, AuthenticatedUser $u) use ($deletion): Response {
+        return Response::ok($deletion()->status($u->uid));
+    }));
+
+    $deviceRegistry = static fn (): \PawLife\Notifications\DeviceRegistry => new \PawLife\Notifications\DeviceRegistry($db());
+    $router->get('/api/dispositivos', $auth(static function (Request $r, array $p, AuthenticatedUser $u) use ($db, $porUsuario): Response {
+        return (new ResourceController(Catalog::dispositivos(), $db(),
+            static fn (): string => 'dispositivos', scope: $porUsuario))->index($r, $p, $u);
+    }));
+    $registerDevice = $auth(static function (Request $r, array $p, AuthenticatedUser $u) use ($deviceRegistry): Response {
+        $record = $deviceRegistry()->register($u->uid, $r->body);
+        $data = Catalog::dispositivos()->toJson($record['id'], $record['data']);
+        return $record['created'] ? Response::created($data) : Response::ok($data);
+    });
+    $router->post('/api/dispositivos', $registerDevice);
+    // Ruta nueva para móviles actualizados: no crear IDs aleatorios si todavía
+    // están conectados a una API anterior a esta migración.
+    $router->post('/api/me/devices', $registerDevice);
+    $router->post('/api/me/devices/revoke', $auth(static function (Request $r, array $p, AuthenticatedUser $u) use ($deviceRegistry): Response {
+        $deviceRegistry()->revoke($u->uid, $r->body);
+        return Response::ok(['revocado' => true]);
+    }));
+    $router->get('/api/dispositivos/{id}', $auth(static function (Request $r, array $p, AuthenticatedUser $u) use ($deviceRegistry): Response {
+        $record = $deviceRegistry()->find($u->uid, $p['id']);
+        if ($record === null) throw HttpException::notFound('No existe el dispositivo.');
+        return Response::ok(Catalog::dispositivos()->toJson($record['id'], $record['data']));
+    }));
+    $updateDevice = $auth(static function (Request $r, array $p, AuthenticatedUser $u) use ($deviceRegistry): Response {
+        $record = $deviceRegistry()->update($u->uid, $p['id'], $r->body);
+        return Response::ok(Catalog::dispositivos()->toJson($record['id'], $record['data']));
+    });
+    $router->patch('/api/dispositivos/{id}', $updateDevice);
+    $router->put('/api/dispositivos/{id}', $updateDevice);
+    $router->delete('/api/dispositivos/{id}', $auth(static function (Request $r, array $p, AuthenticatedUser $u) use ($deviceRegistry): Response {
+        $deviceRegistry()->remove($u->uid, $p['id']);
         return Response::noContent();
     }));
 
-    $resource(
-        '/api/dispositivos',
-        Catalog::dispositivos(),
-        static fn (AuthenticatedUser $u, array $p): string => 'dispositivos',
-        null,
-        [],
-        $porUsuario,
-    );
-
     $router->dispatch($request)->send($origin);
-} catch (HttpException $e) {
-    Response::error($e->status(), $e->getMessage(), $e->details())->send($origin);
 } catch (Throwable $e) {
-    // El detalle va al log de Vercel, no al cliente: puede contener trozos de
-    // configuracion o rutas internas.
-    error_log('[pawlife-api] ' . $e::class . ': ' . $e->getMessage() . "\n" . $e->getTraceAsString());
-
-    Response::error(500, 'Error interno del servidor.')->send($origin);
+    $requestId = bin2hex(random_bytes(12));
+    if (!$e instanceof HttpException || $e->status() >= 500) {
+        error_log(\PawLife\Http\ApiError::logRecord($e, $requestId));
+    }
+    \PawLife\Http\ApiError::response($e, $requestId)->send($origin);
 }

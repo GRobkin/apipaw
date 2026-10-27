@@ -4,6 +4,16 @@ declare(strict_types=1);
 
 require dirname(__DIR__) . '/src/bootstrap.php';
 
+// En Windows, PHP no encuentra openssl.cnf por si solo y openssl_pkey_new() falla sin esta ruta.
+function rsaOptions(): array
+{
+    $options = ['private_key_bits' => 2048, 'private_key_type' => OPENSSL_KEYTYPE_RSA];
+    $config = dirname(PHP_BINARY) . '/extras/ssl/openssl.cnf';
+    if (getenv('OPENSSL_CONF') === false && is_file($config)) $options['config'] = $config;
+    return $options;
+}
+
+
 use PawLife\Firestore\Value;
 use PawLife\Auth\FirebaseAuthAdmin;
 use PawLife\Notifications\CronSignature;
@@ -143,7 +153,7 @@ check('cuenta eliminada, deshabilitada o sesion revocada no puede entrar', funct
 });
 
 check('programador acepta solo firmas recientes y autenticas', function (): void {
-    $key = openssl_pkey_new(['private_key_bits' => 2048, 'private_key_type' => OPENSSL_KEYTYPE_RSA]);
+    $key = openssl_pkey_new(rsaOptions());
     assertTrue($key !== false);
     $public = openssl_pkey_get_details($key)['key'];
     $now = time();
@@ -430,9 +440,9 @@ check('un paseo antiguo con GeoPoint se sigue leyendo', function () use ($paseos
 
 echo "\n== Support\\Jwt ==\n";
 check('firma y verifica RS256', function (): void {
-    $key = openssl_pkey_new(['private_key_bits' => 2048, 'private_key_type' => OPENSSL_KEYTYPE_RSA]);
+    $key = openssl_pkey_new(rsaOptions());
     assertTrue($key !== false, 'openssl no genero la clave');
-    openssl_pkey_export($key, $privatePem);
+    openssl_pkey_export($key, $privatePem, null, rsaOptions());
     $publicPem = openssl_pkey_get_details($key)['key'];
 
     $token = Jwt::signRs256(['iss' => 'test@example.com', 'exp' => time() + 60], $privatePem);

@@ -20,6 +20,7 @@ final class AuthenticatedUser
         public readonly ?string $pictureUrl = null,
         public readonly string $signInProvider = 'unknown',
         public readonly ?int $authTime = null,
+        public readonly bool $emailVerified = false,
     ) {
     }
 
@@ -34,8 +35,9 @@ final class AuthenticatedUser
         $now ??= time();
         if ($this->authTime === null || $this->authTime > $now + 60
             || $now - $this->authTime > 300) {
-            throw \PawLife\Http\HttpException::unauthorized(
-                'Por seguridad, cerrá sesión y volvé a ingresar antes de eliminar la cuenta.',
+            throw new \PawLife\Http\HttpException(401,
+                'Confirmá tu identidad para continuar con esta operación.',
+                errorCode: 'REAUTHENTICATION_REQUIRED',
             );
         }
     }

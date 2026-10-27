@@ -89,6 +89,7 @@ final class FirebaseTokenVerifier
             pictureUrl: isset($claims['picture']) ? (string) $claims['picture'] : null,
             signInProvider: (string) ($firebase['sign_in_provider'] ?? 'unknown'),
             authTime: isset($claims['auth_time']) ? (int) $claims['auth_time'] : null,
+            emailVerified: ($claims['email_verified'] ?? false) === true,
         );
     }
 
