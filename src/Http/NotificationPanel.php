@@ -11,6 +11,7 @@ final class NotificationPanel
         $files = ['/notificaciones' => ['index.html', 'text/html'],
             '/notificaciones/app.js' => ['app.js', 'text/javascript'],
             '/notificaciones/notification-batch.mjs' => ['notification-batch.mjs', 'text/javascript'],
+            '/notificaciones/global-job.mjs' => ['global-job.mjs', 'text/javascript'],
             '/notificaciones/style.css' => ['style.css', 'text/css'],
             '/notificaciones/icons.svg' => ['icons.svg', 'image/svg+xml'],
             '/notificaciones/assets/NunitoSans.ttf' => ['assets/NunitoSans.ttf', 'font/ttf'],

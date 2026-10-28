@@ -24,7 +24,7 @@ use PawLife\Support\Json;
  * reglas sino de que cada consulta de colecciones raíz filtra por userId,
  * obtenido del ID token verificado (ver Auth\FirebaseTokenVerifier).
  */
-final class FirestoreClient implements ReminderStore, AtomicStore
+final class FirestoreClient implements \PawLife\Notifications\GlobalNotificationStore, AtomicStore
 {
     private const BASE = 'https://firestore.googleapis.com/v1';
 
@@ -168,6 +168,31 @@ final class FirestoreClient implements ReminderStore, AtomicStore
             ],
             'limit' => max(1, min(51, $limit)),
         ];
+    }
+
+    /** Página de una colección raíz ordenada por ID (ver GlobalNotificationStore). */
+    public function collectionPage(string $collection, ?string $afterId, int $limit): array
+    {
+        $query = [
+            'from' => [['collectionId' => $collection]],
+            'orderBy' => [['field' => ['fieldPath' => '__name__'], 'direction' => 'ASCENDING']],
+            'limit' => max(1, min(100, $limit)),
+        ];
+        if ($afterId !== null) {
+            $query['startAt'] = [
+                'values' => [['referenceValue' => 'projects/' . $this->projectId . '/databases/(default)/documents/'
+                    . $collection . '/' . $afterId]],
+                'before' => false,
+            ];
+        }
+        $response = $this->request('POST', rtrim($this->documentsUrl(''), '/') . ':runQuery', ['structuredQuery' => $query]);
+        $documents = [];
+        foreach ($response ?? [] as $row) {
+            if (!is_array($row) || !isset($row['document'])) continue;
+            $doc = $row['document'];
+            $documents[] = ['id' => self::idFromName((string) $doc['name']), 'data' => Value::decodeFields($doc['fields'] ?? [])];
+        }
+        return $documents;
     }
 
     /**

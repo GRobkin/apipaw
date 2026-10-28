@@ -38,12 +38,19 @@ final class FcmSender implements PushSender
                 10,
             );
         } catch (RuntimeException $e) {
-            throw new HttpException(503, 'No se pudo contactar con FCM.', previous: $e);
+            // Sin respuesta: no se sabe si FCM lo aceptó (resultado incierto).
+            throw new HttpException(503, 'No se pudo contactar con FCM.', previous: $e, errorCode: 'FCM_UNCERTAIN');
         }
         if ($response['status'] !== 200) {
             $payload = Json::decodeObject($response['body']) ?? [];
             $code = (string) ($payload['error']['status'] ?? 'UNKNOWN');
-            throw new HttpException(502, 'FCM rechazo el mensaje: ' . $code);
+            // Con respuesta de FCM sí se sabe que NO aceptó el mensaje.
+            $errorCode = match (true) {
+                in_array($code, ['UNREGISTERED', 'NOT_FOUND'], true) => 'FCM_TOKEN_INVALID',
+                $response['status'] === 429 || $response['status'] >= 500 => 'FCM_TRANSIENT',
+                default => 'FCM_REJECTED',
+            };
+            throw new HttpException(502, 'FCM rechazo el mensaje: ' . $code, errorCode: $errorCode);
         }
     }
 }

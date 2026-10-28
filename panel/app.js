@@ -1,16 +1,20 @@
 import { createBatch, sendBatch } from '/notificaciones/notification-batch.mjs';
+import { createGlobalRequest, runGlobal, summarizeGlobal } from '/notificaciones/global-job.mjs';
 
 const $ = (id) => document.getElementById(id);
 let auth;
 let sdk;
 let busy = false;
 let pendingRequest = null;
+let pendingGlobal = null;
+let audience = 'personas';
 let currentSession = 0;
 let completed = false;
 const recipients = new Map();
 
 function resetRequest() {
   pendingRequest = null;
+  pendingGlobal = null;
   completed = false;
   $('send-button').disabled = false;
   $('send-label').textContent = 'Revisar y enviar';
@@ -64,7 +68,24 @@ function resetRecipient() {
   resetRequest();
 }
 
+function setAudience(value) {
+  if (busy) return;
+  audience = value;
+  $('search-form').hidden = value === 'todos';
+  resetRequest();
+  updateRecipientScene();
+}
+document.querySelectorAll('input[name="audience"]').forEach((radio) => {
+  radio.addEventListener('change', () => { if (radio.checked) setAudience(radio.value); });
+});
+
 function updateRecipientScene() {
+  if (audience === 'todos') {
+    $('preview-recipient').textContent = 'Todas las personas con avisos del equipo activados';
+    $('preview-recipient').title = '';
+    $('recipient-list').hidden = true;
+    return;
+  }
   const users = [...recipients.values()];
   const label = users.length === 1 ? users[0].label
     : users.length ? `${users.length} personas seleccionadas` : 'Seleccioná destinatarios';
@@ -185,9 +206,16 @@ $('search-form').addEventListener('submit', async (event) => {
 $('send-form').addEventListener('submit', (event) => {
   event.preventDefault();
   if (busy || completed) return;
-  if (!recipients.size) { status('Añadí al menos un destinatario.', true); return; }
+  if (audience === 'personas' && !recipients.size) { status('Añadí al menos un destinatario.', true); return; }
   const message = $('message').value.trim();
   if (!message || Array.from(message).length > 240) { status('Escribí un aviso de hasta 240 caracteres.', true); return; }
+  if (audience === 'todos') {
+    pendingGlobal ??= createGlobalRequest(message);
+    $('confirm-recipient').textContent = 'Para TODAS las personas con avisos del equipo activados.\nSe envía en lotes desde el servidor y no se puede deshacer una vez iniciado.';
+    $('confirm-message').textContent = message;
+    $('confirm-dialog').showModal();
+    return;
+  }
   pendingRequest ??= createBatch([...recipients.values()], message);
   $('confirm-recipient').textContent = `Para ${recipients.size} persona${recipients.size === 1 ? '' : 's'}:\n${[...recipients.values()].map((user) => user.label).join('\n')}`;
   $('confirm-message').textContent = message;
@@ -206,7 +234,50 @@ $('confirm-dialog').addEventListener('keydown', (event) => {
     first.focus();
   }
 });
+async function confirmGlobal() {
+  if (busy || !pendingGlobal) return;
+  const session = currentSession;
+  const request = pendingGlobal;
+  busy = true;
+  $('confirm-dialog').close();
+  loadingButton('send-button', true);
+  $('message').disabled = true;
+  $('audience-mode').disabled = true;
+  status('Creando el envío a todos…');
+  $('delivery-summary').textContent = 'Creando el envío…';
+  $('send-form').dataset.sceneState = 'sending';
+  try {
+    const job = await runGlobal((path, body) => api(path, body), request, {
+      active: () => session === currentSession,
+      onProgress: (state) => { $('delivery-summary').textContent = summarizeGlobal(state); },
+    });
+    if (session !== currentSession || !job) return;
+    completed = job.estado === 'completado';
+    const problems = job.contadores.fallidas > 0 || job.contadores.inciertas > 0 || job.estado === 'detenido';
+    $('send-form').dataset.sceneState = problems ? 'warning' : 'accepted';
+    $('new-message').hidden = false;
+    $('new-message').focus({ preventScroll: true });
+    $('send-label').textContent = completed ? 'Envío registrado' : 'Envío detenido';
+    status(`FCM aceptó el aviso en ${job.contadores.aceptadas} dispositivos.\nLa recepción final depende de los permisos y la conexión de cada teléfono.`, problems);
+  } catch (error) {
+    if (session === currentSession) {
+      status(error.message, true);
+      $('send-form').dataset.sceneState = 'warning';
+    }
+  } finally {
+    if (session === currentSession) {
+      busy = false;
+      loadingButton('send-button', false);
+      $('send-button').disabled = completed;
+      $('message').disabled = false;
+      $('audience-mode').disabled = false;
+      updateRecipientScene();
+    }
+  }
+}
+
 $('confirm-send').addEventListener('click', async () => {
+  if (audience === 'todos') return confirmGlobal();
   if (busy || !pendingRequest) return;
   const session = currentSession;
   const request = pendingRequest;
@@ -280,6 +351,10 @@ async function initialize() {
     $('counter').textContent = '0 / 240 caracteres';
     updatePreview('');
     $('send-card').hidden = true;
+    $('audience-mode').disabled = false;
+    document.querySelector('input[name="audience"][value="personas"]').checked = true;
+    audience = 'personas';
+    $('search-form').hidden = false;
     $('login-card').hidden = !user;
     $('login-view').hidden = Boolean(user);
     resetRecipient();

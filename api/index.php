@@ -76,6 +76,16 @@ try {
         return Response::ok($result);
     });
 
+    // Avanza el envío a todos (si hay uno en curso). Presupuesto propio: no frena los recordatorios.
+    $router->post('/api/internal/process-notification-jobs', static function (Request $r): Response {
+        \PawLife\Notifications\CronSignature::verify($r, \PawLife\Notifications\CronSignature::NOTIFICATION_JOBS_PATH);
+        $result = (new \PawLife\Notifications\GlobalNotification(
+            FirestoreClient::fromEnv(),
+            new \PawLife\Notifications\FcmSender(),
+        ))->processNext();
+        return Response::ok($result);
+    });
+
     // Termina borrados de cuenta pendientes: no depende de que el token del usuario siga vivo.
     $router->post('/api/internal/delete-accounts', static function (Request $r): Response {
         \PawLife\Notifications\CronSignature::verify($r, \PawLife\Notifications\CronSignature::DELETE_ACCOUNTS_PATH);
@@ -135,6 +145,14 @@ try {
     $router->post('/api/admin/notifications', $auth(static function (Request $r, array $p, AuthenticatedUser $u) use ($admin, $db): Response {
         $admin($u);
         return Response::ok((new \PawLife\Notifications\ManualNotification($db(), new \PawLife\Notifications\FcmSender()))->send($u->uid, $r->body));
+    }));
+
+    // Envío a todos: el trabajo lo procesa el cron; aquí solo se crea y se consulta.
+    $router->post('/api/admin/notifications/global', $auth(static function (Request $r, array $p, AuthenticatedUser $u) use ($db): Response {
+        return new Response(202, (new \PawLife\Notifications\GlobalNotification($db(), new \PawLife\Notifications\FcmSender()))->create($u, $r->body));
+    }));
+    $router->get('/api/admin/notifications/global/{id}', $auth(static function (Request $r, array $p, AuthenticatedUser $u) use ($db): Response {
+        return Response::ok((new \PawLife\Notifications\GlobalNotification($db(), new \PawLife\Notifications\FcmSender()))->get($u, $p['id']));
     }));
 
     $ensurePerfil = static function (AuthenticatedUser $u) use ($db): array {
