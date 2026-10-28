@@ -1,5 +1,6 @@
 const REMINDERS_PATH = '/api/internal/send-reminders';
 const DELETE_ACCOUNTS_PATH = '/api/internal/delete-accounts';
+const INACTIVITY_PATH = '/api/internal/inactivity-reminders';
 
 async function importKey(pem) {
   const keyBytes = Uint8Array.from(
@@ -44,6 +45,8 @@ export default {
       const results = await Promise.allSettled([
         call(key, baseUrl, REMINDERS_PATH),
         call(key, baseUrl, DELETE_ACCOUNTS_PATH),
+        // El aviso generado aquí lo envía la siguiente ejecución de REMINDERS_PATH.
+        call(key, baseUrl, INACTIVITY_PATH),
       ]);
       const failed = results.filter((result) => result.status === 'rejected');
       if (failed.length > 0) {

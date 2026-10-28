@@ -11,6 +11,7 @@ final class CronSignature
 {
     public const REMINDERS_PATH = '/api/internal/send-reminders';
     public const DELETE_ACCOUNTS_PATH = '/api/internal/delete-accounts';
+    public const INACTIVITY_PATH = '/api/internal/inactivity-reminders';
     private const PUBLIC_KEY_FILE = __DIR__ . '/push-public.pem';
 
     public static function verify(Request $request, string $path = self::REMINDERS_PATH): void

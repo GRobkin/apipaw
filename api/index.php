@@ -68,6 +68,14 @@ try {
         return Response::ok($result);
     });
 
+    // Genera avisos de "sin paseos" (opt-in). El push lo envía send-reminders.
+    $router->post('/api/internal/inactivity-reminders', static function (Request $r): Response {
+        \PawLife\Notifications\CronSignature::verify($r, \PawLife\Notifications\CronSignature::INACTIVITY_PATH);
+        $result = (new \PawLife\Notifications\InactivityReminderService(FirestoreClient::fromEnv()))
+            ->run(dryRun: $r->queryParam('dryRun') === '1');
+        return Response::ok($result);
+    });
+
     // Termina borrados de cuenta pendientes: no depende de que el token del usuario siga vivo.
     $router->post('/api/internal/delete-accounts', static function (Request $r): Response {
         \PawLife\Notifications\CronSignature::verify($r, \PawLife\Notifications\CronSignature::DELETE_ACCOUNTS_PATH);
