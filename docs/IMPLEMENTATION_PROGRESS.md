@@ -154,4 +154,57 @@ El usuario indicó avanzar a etapa 3 dejando pendientes Vercel/bundle, IAM/índi
 
 ## Retoma
 
-Continuar etapa 3 desde pendientes explícitos de T06 y luego T07, con revisión Astra para privacidad/permisos. Verificaciones de etapa 2 aplazadas por instrucción del usuario. No afirmar seguridad integral, cumplimiento jurídico ni recuperación/borrado de producción. Mantener este registro actualizado. Los mensajes y alertas actuales del panel seleccionado siguen fuera del alcance de modificación. Sin publicidad US20, smartwatch ni funciones sociales. Los cambios requieren publicación coordinada API/móvil cuando el usuario la autorice; todavía no están en producción.
+Continuar etapa 3 desde pendientes explícitos de T06 y luego T07, con revisión Astra para privacidad/permisos. Verificaciones de etapa 2 aplazadas por instrucción del usuario. No afirmar seguridad integral, cumplimiento jurídico ni recuperación/borrado de producción. Mantener este registro actualizado. Los mensajes y alertas actuales del panel seleccionado siguen fuera del alcance de modificación. Sin publicidad US20 ni funciones sociales. La interfaz de reloj se planifica aparte (`PawLife/docs/PLAN_PENDIENTES_Y_RELOJ.md`). Los cambios requieren publicación coordinada API/móvil cuando el usuario la autorice; todavía no están en producción.
+
+## T07 y cambio de correo verificado — 27/10/2026 (local, sin publicar)
+
+Actualizado: 27/10/2026. Bases: rama local `respaldo/etapas-1-3-borrado-y-correo` en PawLife y apipaw. No se publicó nada ni se tocó producción.
+
+### T07 — Eliminación de cuenta reanudable (implementada en local)
+
+- `DELETE /api/me` usa `AccountDeletionService`: exige reautenticación reciente, reserva la cuenta con la barrera `accountLifecycle` y borra por pasos con checkpoints. Responde **204** si termina dentro de la petición o **202** con el estado si queda en curso. `GET /api/me/deletion` informa el estado. Es idempotente: repetir la solicitud devuelve el mismo trabajo.
+- Mientras la cuenta está bloqueada toda escritura normal responde 403 `ACCOUNT_DELETING` (los commits pasan por `AccountLifecycle::guard`). Las otras cuentas no se ven afectadas.
+- `POST /api/internal/delete-accounts` termina trabajos pendientes sin depender del token del usuario. El Worker de Cloudflare firma cada llamada por separado y `CronSignature` ata la firma a la ruta (una firma de recordatorios no sirve para borrar). **El Worker y la API no están redesplegados.**
+- Cubre: colecciones raíz por `userId`, árbol antiguo `users/{uid}/...` (incluidos padres ausentes), retiro del propio rol de administrador, anonimización de `administradorId` en el historial ajeno, cuotas, y borrado de Firebase Auth reintentable. Una suscripción o compra detiene el proceso (409 `ACCOUNT_BILLING_REVIEW_REQUIRED`) hasta decidir retención.
+- Flutter: `eliminarCuenta()` devuelve si terminó; si queda en curso la pantalla de perfil informa «Eliminación en curso».
+- Regresiones que había dejado el intento anterior (409/403 en `firestore_pagination_atomic_test` y `privacy_stage3_test`) resueltas: eran un gancho de prueba obsoleto (`beforePatch`→`beforeCommit`) y una expectativa que ahora es 403 `ACCOUNT_DELETING` cuando el borrado gana la carrera.
+
+### Cambio de correo verificado (implementado en local)
+
+- Flutter: `AuthService.requestEmailChange` (solo cuentas con contraseña, con reautenticación) llama a `verifyBeforeUpdateEmail`; el correo actual no cambia hasta abrir el enlace enviado al correo nuevo. Pantalla `ChangeEmailScreen` y botón «Cambiar correo» en el perfil; `refreshAccount` comprueba la confirmación.
+- API: el claim `email_verified` llega a `AuthenticatedUser`; `Auth\EmailSync` actualiza `users/{uid}.email` solo con correo verificado distinto y cuenta activa. El cliente no puede escribirlo.
+
+### Evidencia (27/10/2026)
+
+| Verificación | Resultado |
+|---|---|
+| Scripts PHP (selftest 29, security_regression, walk_notification_features, firestore_pagination_atomic, privacy_stage3, input_privacy_limits, backup_export, photo_input, walk_image_metadata, account_deletion, email_sync) + `photo_decoder_unavailable` con `php -n` | Todos aprobados |
+| `notification_batch_test.mjs` y `php -l` de todo `src`, `api` y `tests` | Aprobados, sin errores de sintaxis |
+| `flutter analyze --no-pub` | Sin incidencias |
+| `flutter test --no-pub` | **82 pruebas aprobadas** (incluye `email_change_test.dart` y `deleteWithStatus`) |
+
+Todo con dobles en memoria (`MemoryFirestoreTransport` ahora soporta `listCollectionIds`) y sin envíos reales. No prueba Firebase Auth real, el correo de verificación, índices ni IAM de producción.
+
+### Pendiente de estos dos puntos
+
+- Probar con Firebase real: que llegue y funcione el correo de verificación, y un borrado completo (índices para `accountDeletionJobs` y `userId`, permisos IAM).
+- Redesplegar el Worker y la API, solo con autorización explícita.
+- Revisión Astra para T06–T07 (privacidad/permisos): sigue reservada, no se ejecutó.
+- Decisión de retención para suscripciones/compras antes de habilitar Premium.
+## T04, T09, T11, idiomas, tema oscuro y panel — 28/10/2026 (local, sin publicar)
+
+Ramas locales encadenadas en `apipaw`: `respaldo/etapas-1-3-borrado-y-correo` → `feature/t04-inactividad` → `feature/t09-enviar-a-todos` → `feature/t11-premium-manual`. En `PawLife`: `respaldo/…` → `feature/us28-us29-idiomas-tema`. Nada se publicó ni se desplegó.
+
+| Tarea | Estado | Detalle |
+|---|---|---|
+| T04 inactividad | Hecha en local | Preferencia opt-in `inactividad`, un recordatorio por episodio, ruta firmada `/api/internal/inactivity-reminders`; mensaje en el idioma elegido (`preferencias.idioma`). Ver `docs/T04_INACTIVITY.md` |
+| T09 enviar a todos | Hecha en local | Trabajos duraderos, corte de audiencia, un registro por dispositivo, resultados aceptada/fallida/incierta/omitida; tramo limitado a 35 s. Ver `docs/T09_ENVIAR_A_TODOS.md` |
+| T11 premium manual | Hecha en local | Estado efectivo por fuentes, concesión/revocación con reautenticación y auditoría, sección en el panel, `GET /api/me/premium`. Ver `docs/T11_PREMIUM_MANUAL.md` |
+| T12 idiomas (US28) | Hecha en local | es/en/pt con ARB, selector en Perfil y bienvenida, errores y avisos locales traducidos |
+| T13 modo oscuro (US29) | Hecha en local | Claro/oscuro/sistema con tokens y elevación; base visual común |
+| T14 calorías (US27) | **Descartada** por el equipo (28/10/2026) | Se quitó el aviso de la app |
+| T16 propuestas visuales | Propuestas en `PawLife/docs/AUDITORIA_VISUAL_2026-10-28.md`; parte aplicada | Pendiente de revisión antes/después con el equipo |
+
+Evidencia: 16 scripts PHP + 13 tests Node verdes; `flutter analyze` limpio y 103 tests verdes. Todo con dobles en memoria; no prueba Firestore/FCM reales ni dispositivos.
+
+Pendiente: autorización de push y despliegue (API y Worker), ejecución de `tool/configure-premium-admins.cjs` y `tool/report-data-issues.cjs`, índices, diagnóstico de fotos en Vercel, pruebas en teléfono, decisiones de producto (`docs/DECISIONES_PENDIENTES.md`), revisión externa de seguridad (`docs/SEGURIDAD_REVISION_EXTERNA.md`) y la interfaz de reloj.

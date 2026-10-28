@@ -381,7 +381,7 @@ No se verificaron región de datos, subencargados, plazos de terceros ni contrat
 
 ## 13. Secuencia, decisiones y sugerencias
 
-Orden de implementación: T01–T03 → T05 → T06–T07 → T04 (requiere preferencias/jobs) → T08 → T09 → T10 → T11 → T12–T14 → T15. T16 solo diagnóstico/propuesta. T11 puede adelantarse después del núcleo de derechos Premium, sin proveedor de pago, si el equipo lo prioriza. No desarrollar smartwatch ni publicidad US20.
+Orden de implementación: T01–T03 → T05 → T06–T07 → T04 (requiere preferencias/jobs) → T08 → T09 → T10 → T11 → T12–T14 → T15. T16 solo diagnóstico/propuesta. T11 puede adelantarse después del núcleo de derechos Premium, sin proveedor de pago, si el equipo lo prioriza. No desarrollar publicidad US20. La interfaz de reloj se planifica aparte (`PawLife/docs/PLAN_PENDIENTES_Y_RELOJ.md`).
 
 Decisiones que requieren respuesta antes de cerrar tareas dependientes:
 
