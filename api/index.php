@@ -147,6 +147,37 @@ try {
         return Response::ok((new \PawLife\Notifications\ManualNotification($db(), new \PawLife\Notifications\FcmSender()))->send($u->uid, $r->body));
     }));
 
+    // Premium manual: capacidad propia `premium.manage` (no la tiene todo administrador de avisos).
+    $premiumAdmin = static function (AuthenticatedUser $u) use ($db): void {
+        \PawLife\Billing\ManualGrantService::assertAllowed($u, $db());
+    };
+    $router->get('/api/admin/premium-users', $auth(static function (Request $r, array $p, AuthenticatedUser $u) use ($premiumAdmin, $db): Response {
+        $premiumAdmin($u);
+        (new \PawLife\Notifications\ReminderRateLimiter($db()))->consume('premium-lookup:' . $u->uid);
+        $email = trim($r->queryParam('email', '') ?? '');
+        if (strlen($email) > 254 || filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
+            throw HttpException::badRequest('Escribí el correo completo de la cuenta.');
+        }
+        $profile = FirebaseAuthAdmin::findByEmail($email);
+        if ($profile === null || $db()->getDocument('users/' . $profile['uid']) === null) return Response::ok(['items' => []]);
+        return Response::ok(['items' => [$profile]]);
+    }));
+    $router->get('/api/admin/users/{uid}/premium', $auth(static function (Request $r, array $p, AuthenticatedUser $u) use ($db): Response {
+        return Response::ok((new \PawLife\Billing\ManualGrantService($db()))->state($u, $p['uid']));
+    }));
+    $router->post('/api/admin/users/{uid}/premium-grants', $auth(static function (Request $r, array $p, AuthenticatedUser $u) use ($db): Response {
+        return new Response(201, (new \PawLife\Billing\ManualGrantService($db()))->grant($u, $p['uid'], $r->body));
+    }));
+    $router->delete('/api/admin/users/{uid}/premium-grants/{id}', $auth(static function (Request $r, array $p, AuthenticatedUser $u) use ($db): Response {
+        return Response::ok((new \PawLife\Billing\ManualGrantService($db()))->revoke($u, $p['uid'], $p['id']));
+    }));
+    // Estado propio recalculado en el servidor (la app no lo decide).
+    $router->get('/api/me/premium', $auth(static function (Request $r, array $p, AuthenticatedUser $u) use ($db): Response {
+        $state = (new \PawLife\Billing\EntitlementService($db()))->effective($u->uid);
+        return Response::ok(['activo' => $state['activo'], 'estado' => $state['estado'], 'venceEn' => $state['venceEn'],
+            'fuentes' => ['manual' => $state['fuentes']['manual']['activa'], 'pago' => $state['fuentes']['pago']['activa']]]);
+    }));
+
     // Envío a todos: el trabajo lo procesa el cron; aquí solo se crea y se consulta.
     $router->post('/api/admin/notifications/global', $auth(static function (Request $r, array $p, AuthenticatedUser $u) use ($db): Response {
         return new Response(202, (new \PawLife\Notifications\GlobalNotification($db(), new \PawLife\Notifications\FcmSender()))->create($u, $r->body));

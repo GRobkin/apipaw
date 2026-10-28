@@ -12,7 +12,8 @@ use PawLife\Support\ResourceId;
 final class AccountLifecycle
 {
     public const OWNED = ['mascotas', 'vacunas', 'medicamentos', 'alimentaciones', 'pesos', 'paseos',
-        'recordatorios', 'dispositivos', 'notificaciones', 'operationQuotas', 'privacyRequests', 'consentEvents', 'exportSessions'];
+        'recordatorios', 'dispositivos', 'notificaciones', 'operationQuotas', 'privacyRequests', 'consentEvents', 'exportSessions',
+        'premiumGrants', 'premiumAudit'];
 
     public static function key(string $uid): string { ResourceId::validate($uid); return hash('sha256', $uid); }
     public static function path(string $uid): string { return 'accountLifecycle/' . self::key($uid); }
