@@ -61,7 +61,7 @@
         <div class="session"><span class="session-avatar" aria-hidden="true"><svg class="icon"><use href="/notificaciones/icons.svg#person"></use></svg></span><div><span class="session-role">Administrador</span><p id="session-email"></p></div><button id="logout-button" class="icon-button" type="button" aria-label="Cerrar sesión" title="Cerrar sesión"><svg class="icon" aria-hidden="true"><use href="/notificaciones/icons.svg#logout"></use></svg></button></div>
       </div>
       <div id="admin-status-slot"></div>
-      <div class="dispatch-studio">
+      <div class="dispatch-studio" id="dispatch-studio">
         <div class="dispatch-toolbar">
         <fieldset class="audience-mode" id="audience-mode">
           <legend>Destinatarios</legend>
@@ -95,9 +95,35 @@
         </form>
       </div>
     </section>
+    <section id="premium-section" class="premium-section" hidden aria-labelledby="premium-title">
+      <h2 id="premium-title">Premium</h2>
+      <form id="premium-search-form" class="premium-search">
+        <label for="premium-email">Correo exacto de la cuenta</label>
+        <div class="search"><div class="input-wrap"><svg class="icon field-icon" aria-hidden="true"><use href="/notificaciones/icons.svg#mail"></use></svg><input id="premium-email" type="email" autocomplete="off" placeholder="nombre@correo.com" required maxlength="254"></div><button type="submit" id="premium-search-button" class="search-button"><svg class="icon" aria-hidden="true"><use href="/notificaciones/icons.svg#search"></use></svg><span>Buscar</span></button></div>
+      </form>
+      <div id="premium-account" class="premium-account" hidden>
+        <p id="premium-who" class="premium-who"></p>
+        <p id="premium-headline" class="premium-headline" role="status"></p>
+        <ul id="premium-sources" class="premium-lines"></ul>
+        <h3>Concesiones manuales</h3>
+        <ul id="premium-grants" class="premium-grants" aria-label="Concesiones manuales"></ul>
+        <form id="premium-grant-form" class="premium-grant-form">
+          <h3>Conceder acceso manual</h3>
+          <div class="premium-fields">
+            <label for="premium-days">Días<input id="premium-days" type="number" min="1" max="365" step="1" value="7" required inputmode="numeric"></label>
+            <label for="premium-reason">Motivo breve<input id="premium-reason" type="text" maxlength="140" placeholder="Prueba interna del equipo" required autocomplete="off"></label>
+          </div>
+          <button type="submit" id="premium-grant-button" class="primary"><span>Revisar y conceder</span></button>
+        </form>
+      </div>
+    </section>
     <p id="status" role="status" aria-live="polite" aria-atomic="true"></p>
     <noscript>Activá JavaScript para usar este panel.</noscript>
   </main>
+  <dialog id="premium-dialog" aria-labelledby="premium-dialog-title" aria-describedby="premium-dialog-text">
+    <h2 id="premium-dialog-title">Confirmar</h2><p id="premium-dialog-text"></p>
+    <div class="dialog-actions"><button id="premium-dialog-cancel" class="secondary" type="button">Cancelar</button><button id="premium-dialog-confirm" class="primary" type="button">Confirmar</button></div>
+  </dialog>
   <dialog id="confirm-dialog" aria-labelledby="confirm-title" aria-describedby="confirm-recipient">
     <div class="section-icon"><svg class="icon" aria-hidden="true"><use href="/notificaciones/icons.svg#send"></use></svg></div>
     <h2 id="confirm-title">¿Enviamos este aviso?</h2><p id="confirm-recipient"></p><blockquote id="confirm-message"></blockquote>

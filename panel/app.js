@@ -1,5 +1,6 @@
 import { createBatch, sendBatch } from '/notificaciones/notification-batch.mjs';
 import { createGlobalRequest, runGlobal, summarizeGlobal } from '/notificaciones/global-job.mjs';
+import { grantBody, describeState, describeGrant, friendlyError } from '/notificaciones/premium-admin.mjs';
 
 const $ = (id) => document.getElementById(id);
 let auth;
@@ -45,20 +46,24 @@ $('toggle-password').addEventListener('click', () => {
   $('toggle-password').setAttribute('aria-label', visible ? 'Ocultar contraseña' : 'Mostrar contraseña');
 });
 
-async function api(path, body) {
+async function api(path, body, method = body ? 'POST' : 'GET') {
   const user = auth?.currentUser;
   if (!user) throw new Error('Ingresá nuevamente para continuar.');
   const token = await user.getIdToken();
   if (auth.currentUser !== user) throw new Error('La sesión cambió. Ingresá nuevamente.');
   const response = await fetch(path, {
-    method: body ? 'POST' : 'GET',
+    method,
     headers: { Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
     body: body ? JSON.stringify(body) : undefined,
     cache: 'no-store',
     signal: AbortSignal.timeout(65000),
   });
   const data = await response.json();
-  if (!response.ok) throw new Error(data.error?.message || 'No se pudo completar la operación.');
+  if (!response.ok) {
+    const error = new Error(data.error?.message || 'No se pudo completar la operación.');
+    error.code = data.error?.code;
+    throw error;
+  }
   return data;
 }
 
@@ -325,6 +330,119 @@ $('confirm-send').addEventListener('click', async () => {
   }
 });
 
+// ---- Premium manual -------------------------------------------------------
+let premiumTarget = null;
+let premiumRequestId = null;
+let premiumRequestKey = '';
+
+function resetPremium() {
+  premiumTarget = null;
+  premiumRequestId = null;
+  premiumRequestKey = '';
+  $('premium-account').hidden = true;
+  $('premium-email').value = '';
+  $('premium-reason').value = '';
+  $('premium-days').value = '7';
+  $('premium-grants').replaceChildren();
+  $('premium-sources').replaceChildren();
+}
+
+function renderPremium(state) {
+  const summary = describeState(state);
+  $('premium-headline').textContent = summary.headline;
+  $('premium-headline').classList.toggle('is-active', summary.active);
+  $('premium-sources').replaceChildren(...summary.lines.map((line) => {
+    const item = document.createElement('li');
+    item.textContent = line;
+    return item;
+  }));
+  const grants = state.concesiones ?? [];
+  $('premium-grants').replaceChildren(...(grants.length ? grants : [null]).map((grant) => {
+    const item = document.createElement('li');
+    if (!grant) { item.textContent = 'Sin concesiones manuales.'; return item; }
+    const info = describeGrant(grant);
+    const text = document.createElement('span');
+    text.textContent = info.text;
+    item.append(text);
+    if (info.revocable) {
+      const revoke = document.createElement('button');
+      revoke.type = 'button';
+      revoke.textContent = 'Revocar';
+      revoke.addEventListener('click', () => askPremium('Revocar concesión',
+        `Se corta el acceso manual de ${premiumTarget.label}. Una suscripción paga, si la hay, no se toca.`,
+        () => revokeGrant(grant.id)));
+      item.append(revoke);
+    }
+    return item;
+  }));
+}
+
+function askPremium(title, text, onConfirm) {
+  $('premium-dialog-title').textContent = title;
+  $('premium-dialog-text').textContent = text;
+  $('premium-dialog-confirm').onclick = () => { $('premium-dialog').close(); onConfirm(); };
+  $('premium-dialog').showModal();
+}
+$('premium-dialog-cancel').addEventListener('click', () => $('premium-dialog').close());
+
+async function loadPremium() {
+  renderPremium(await api(`/api/admin/users/${encodeURIComponent(premiumTarget.uid)}/premium`));
+  $('premium-account').hidden = false;
+}
+
+$('premium-search-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  if (busy) return;
+  const session = currentSession;
+  busy = true;
+  loadingButton('premium-search-button', true);
+  status('Buscando cuenta…');
+  try {
+    const email = $('premium-email').value.trim();
+    const data = await api(`/api/admin/premium-users?email=${encodeURIComponent(email)}`);
+    if (session !== currentSession) return;
+    $('premium-account').hidden = true;
+    premiumRequestId = null;
+    if (!data.items.length) { premiumTarget = null; status('No encontramos una cuenta con ese correo. La persona debe haber ingresado a PawLife.'); return; }
+    const [user] = data.items;
+    premiumTarget = { uid: user.uid, label: `${user.nombre || 'Usuario'} · ${user.email}` };
+    $('premium-who').textContent = premiumTarget.label;
+    await loadPremium();
+    status('');
+  } catch (error) { if (session === currentSession) status(friendlyError(error), true); }
+  finally { if (session === currentSession) { busy = false; loadingButton('premium-search-button', false); } }
+});
+
+$('premium-grant-form').addEventListener('submit', (event) => {
+  event.preventDefault();
+  if (busy || !premiumTarget) return;
+  const key = `${premiumTarget.uid}|${$('premium-days').value}|${$('premium-reason').value.trim()}`;
+  if (key !== premiumRequestKey) { premiumRequestKey = key; premiumRequestId = crypto.randomUUID(); }
+  let body;
+  try { body = grantBody({ days: $('premium-days').value, motivo: $('premium-reason').value, solicitudId: premiumRequestId }); }
+  catch (error) { status(error.message, true); return; }
+  askPremium('Conceder Premium manual',
+    `${premiumTarget.label}\nAcceso manual por ${$('premium-days').value} días.\nMotivo: ${body.motivo}`,
+    () => grantPremium(body));
+});
+
+async function runPremiumAction(action, done) {
+  const session = currentSession;
+  busy = true;
+  loadingButton('premium-grant-button', true);
+  try {
+    renderPremium(await action());
+    if (session === currentSession) status(done);
+  } catch (error) { if (session === currentSession) status(friendlyError(error), true); }
+  finally { if (session === currentSession) { busy = false; loadingButton('premium-grant-button', false); } }
+}
+const grantPremium = (body) => runPremiumAction(
+  () => api(`/api/admin/users/${encodeURIComponent(premiumTarget.uid)}/premium-grants`, body),
+  'Concesión registrada. El estado de arriba lo calculó el servidor.');
+const revokeGrant = (id) => runPremiumAction(
+  () => api(`/api/admin/users/${encodeURIComponent(premiumTarget.uid)}/premium-grants/${encodeURIComponent(id)}`, undefined, 'DELETE'),
+  'Concesión revocada.');
+
 async function initialize() {
   const version = '12.19.0';
   const [{ initializeApp }, authSdk] = await Promise.all([
@@ -351,6 +469,8 @@ async function initialize() {
     $('counter').textContent = '0 / 240 caracteres';
     updatePreview('');
     $('send-card').hidden = true;
+    $('premium-section').hidden = true;
+    resetPremium();
     $('audience-mode').disabled = false;
     document.querySelector('input[name="audience"][value="personas"]').checked = true;
     audience = 'personas';
@@ -364,6 +484,8 @@ async function initialize() {
       const identity = await api('/api/admin/session');
       if (session !== currentSession) return;
       $('session-email').textContent = identity.email;
+      $('dispatch-studio').hidden = identity.avisos === false;
+      $('premium-section').hidden = identity.premium !== true;
       $('login-card').hidden = true;
       $('send-card').hidden = false;
       status('');

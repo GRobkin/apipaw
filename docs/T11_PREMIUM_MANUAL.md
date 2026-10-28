@@ -22,7 +22,13 @@ Estado: implementado y probado con un doble de Firestore en memoria (`tests/prem
 
 ## Pendiente / decisiones
 - Crear `configuracion/premium` con los responsables y el tope: **decisión del equipo**. Sin ese documento nadie puede gestionar Premium.
-- Panel (sección compacta) y pantalla en la app: no hechos.
+- Pantalla en la app: no hecha.
 - Exportación de datos propios: aún no incluye `premiumGrants`.
 - Qué beneficios autoriza Premium (T10) y qué hacer con los valores `legacy`: inventario y decisión de producto.
 - Índice para `premiumGrants` por (userId, creadoEn desc) y `subscriptions` por (userId, creadoEn desc): confirmar en Firestore.
+
+## Panel (sección «Premium»)
+- `GET /api/admin/session` ahora informa `{avisos, premium}`: el panel muestra cada módulo solo si la cuenta tiene esa capacidad (los endpoints la vuelven a comprobar). Una cuenta con solo `premium.manage` puede entrar al panel sin poder enviar avisos.
+- Sección compacta: correo exacto → estado efectivo (manual / pagado / valor heredado sin respaldo), lista de concesiones con «Revocar», formulario de días y motivo, y un diálogo de confirmación para cada acción. El estado mostrado siempre lo calcula el servidor.
+- Si el inicio de sesión tiene más de 5 minutos, el servidor responde `REAUTHENTICATION_REQUIRED` y el panel pide ingresar de nuevo (no hay reautenticación en el lugar).
+- Verificado en un navegador con una API **simulada** (no la real) y un stub de Firebase: búsqueda, conceder (formato de fecha validado con la misma expresión del servidor), revocar, error de reautenticación y vista de teléfono sin desborde. Tests Node: `tests/premium_admin_test.mjs`. No probado con Firebase ni Firestore reales.

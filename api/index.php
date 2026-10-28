@@ -126,9 +126,14 @@ try {
     $admin = static function (AuthenticatedUser $u) use ($db): void {
         \PawLife\Auth\NotificationAdmin::assertAllowed($u, $db());
     };
-    $router->get('/api/admin/session', $auth(static function (Request $r, array $p, AuthenticatedUser $u) use ($admin): Response {
-        $admin($u);
-        return Response::ok(['email' => $u->email, 'uid' => $u->uid]);
+    // El panel informa qué capacidades tiene la cuenta; cada endpoint vuelve a comprobarlas.
+    $router->get('/api/admin/session', $auth(static function (Request $r, array $p, AuthenticatedUser $u) use ($db): Response {
+        $avisos = false;
+        $premium = false;
+        try { \PawLife\Auth\NotificationAdmin::assertAllowed($u, $db()); $avisos = true; } catch (HttpException) {}
+        try { \PawLife\Billing\ManualGrantService::assertAllowed($u, $db()); $premium = true; } catch (HttpException) {}
+        if (!$avisos && !$premium) \PawLife\Auth\NotificationAdmin::assertAllowed($u, $db()); // lanza el 403 de siempre
+        return Response::ok(['email' => $u->email, 'uid' => $u->uid, 'avisos' => $avisos, 'premium' => $premium]);
     }));
     $router->get('/api/admin/notification-users', $auth(static function (Request $r, array $p, AuthenticatedUser $u) use ($admin, $db): Response {
         $admin($u);
