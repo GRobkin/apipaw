@@ -73,6 +73,7 @@ final class InactivityReminderService
                     $now,
                     $dryRun,
                     $stats,
+                    (string) $prefs['idioma'],
                 );
             }
         }
@@ -89,6 +90,7 @@ final class InactivityReminderService
         DateTimeImmutable $now,
         bool $dryRun,
         array &$stats,
+        string $locale = 'es',
     ): void {
         $last = $this->lastWalk($uid, $petId);
         $origin = $this->episodeOrigin($last, $pet, $includeWithoutWalks);
@@ -132,7 +134,7 @@ final class InactivityReminderService
                 'tipo' => 'inactividad',
                 'entidadId' => is_string($last['id'] ?? null) ? $last['id'] : $petId,
                 'fecha' => $now,
-                'mensaje' => self::message((string) ($pet['nombre'] ?? ''), $origin, $now),
+                'mensaje' => self::message((string) ($pet['nombre'] ?? ''), $origin, $now, $locale),
                 'completado' => false,
                 'origenEpisodio' => $origin,
                 'generadoPor' => 'servidor',
@@ -188,11 +190,21 @@ final class InactivityReminderService
         return 'inact_' . substr(hash('sha256', $uid . "\0" . $petId . "\0" . $origin->format('U.u')), 0, 40);
     }
 
-    private static function message(string $name, DateTimeImmutable $origin, DateTimeImmutable $now): string
+    /** Texto del aviso en el idioma elegido por la persona (es, en o pt). */
+    public static function message(string $name, DateTimeImmutable $origin, DateTimeImmutable $now, string $locale = 'es'): string
     {
-        $who = trim($name) === '' ? 'Tu mascota' : trim($name);
         $hours = max(1, intdiv($now->getTimestamp() - $origin->getTimestamp(), 3600));
-        $elapsed = $hours < 48 ? $hours . ' horas' : intdiv($hours, 24) . ' días';
-        return substr($who . ' lleva ' . $elapsed . ' sin pasear.', 0, 240);
+        $useHours = $hours < 48;
+        $n = $useHours ? $hours : intdiv($hours, 24);
+        $name = trim($name);
+        $text = match ($locale) {
+            'en' => ($name === '' ? 'Your pet' : $name) . " hasn't been walked for $n "
+                . ($useHours ? ($n === 1 ? 'hour' : 'hours') : 'days') . '.',
+            'pt' => ($name === '' ? 'Seu pet' : $name) . " está há $n "
+                . ($useHours ? ($n === 1 ? 'hora' : 'horas') : 'dias') . ' sem passear.',
+            default => ($name === '' ? 'Tu mascota' : $name) . " lleva $n "
+                . ($useHours ? ($n === 1 ? 'hora' : 'horas') : 'días') . ' sin pasear.',
+        };
+        return mb_substr($text, 0, 240);
     }
 }

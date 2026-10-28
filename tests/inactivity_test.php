@@ -205,4 +205,22 @@ ok($after['inactividad']['habilitada'] === true && $after['inactividad']['interv
 $after = $privacy->updatePreferences('a', ['inactividad' => ['incluirSinPaseos' => true]])['preferencias'];
 ok($after['inactividad'] === ['habilitada' => true, 'intervaloHoras' => 96, 'incluirSinPaseos' => true], 'la actualización parcial debe conservar lo demás');
 
+// ---- idioma de los avisos ----
+$n = new DateTimeImmutable('2026-10-23T10:00:00Z'); $o = new DateTimeImmutable('2026-10-20T10:00:00Z');
+ok(InactivityReminderService::message('Luna', $o, $n, 'es') === 'Luna lleva 3 días sin pasear.', 'es');
+ok(InactivityReminderService::message('Luna', $o, $n, 'en') === "Luna hasn't been walked for 3 days.", 'en');
+ok(InactivityReminderService::message('Luna', $o, $n, 'pt') === 'Luna está há 3 dias sem passear.', 'pt');
+ok(InactivityReminderService::message('', $o->modify('+71 hours'), $n, 'en') === "Your pet hasn't been walked for 1 hour.", 'singular en sin nombre');
+ok(InactivityReminderService::message('Luna', $o->modify('+71 hours'), $n, 'pt') === 'Luna está há 1 hora sem passear.', 'singular pt');
+ok(InactivityReminderService::message('Luna', $o, $n, 'xx') === 'Luna lleva 3 días sin pasear.', 'idioma desconocido: español');
+$s = new InactivityStore();
+seed($s, ['recordatoriosCuidados' => true, 'idioma' => 'pt', 'inactividad' => ['habilitada' => true, 'intervaloHoras' => 48]], $t0);
+(new InactivityReminderService($s))->run($t0->modify('+72 hours'));
+ok(str_contains(array_values($s->reminders())[0]['mensaje'], 'está há'), 'el aviso se genera en el idioma elegido');
+bad(fn () => $privacy->updatePreferences('a', ['idioma' => 'fr']), 400);
+bad(fn () => $privacy->updatePreferences('a', ['idioma' => true]), 400);
+ok($privacy->info('a')['preferencias']['idioma'] === 'es', 'idioma por defecto');
+ok($privacy->updatePreferences('a', ['idioma' => 'en'])['preferencias']['idioma'] === 'en', 'guardar el idioma');
+ok($privacy->updatePreferences('a', ['avisosEquipo' => false])['preferencias']['idioma'] === 'en', 'otras preferencias no pisan el idioma');
+
 echo "TODO OK: inactividad (umbral, episodios sin duplicados, paseo nuevo, carrera, preferencias, opt-in, dryRun)\n";

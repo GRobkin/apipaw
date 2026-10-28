@@ -282,4 +282,13 @@ $sender->onSend = static function (string $token) use ($s): void {
 drain($job, $t0);
 ok(!in_array('tok-u002', $sender->sent, true), 'una baja durante el trabajo se respeta antes de enviar');
 
+// ---- presupuesto de tiempo: cada pasada avanza al menos una persona y respeta el límite ----
+$s = world(5); $sender = new ScriptedSender(); $job = new GlobalNotification($s, $sender);
+$id = $job->create($admin, BODY, $t0)['id'];
+$r = $job->processNext($t0->modify('+1 minute'), 0.0);
+ok($r['usuarios'] === 1 && $r['estado'] === 'en_proceso' && count($sender->sent) === 1, 'sin tiempo, la pasada procesa una sola persona y sigue en proceso');
+$guard = 0;
+while (($job->get($admin, $id)['estado'] ?? '') === 'en_proceso' && $guard++ < 20) $job->processNext($t0->modify("+$guard hours"), 0.0);
+ok($job->get($admin, $id)['estado'] === 'completado' && count($sender->sent) === 5 && count(array_unique($sender->sent)) === 5, 'avanzando de a una persona completa sin duplicar');
+
 echo "TODO OK: envío a todos (validación, 0/muchas páginas, duplicados, bajas, corte de audiencia, lease, permisos, resultados FCM, cortes sin duplicar)\n";

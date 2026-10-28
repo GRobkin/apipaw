@@ -126,6 +126,13 @@ try {
     $admin = static function (AuthenticatedUser $u) use ($db): void {
         \PawLife\Auth\NotificationAdmin::assertAllowed($u, $db());
     };
+    // Diagnóstico del procesamiento de fotos en ESTE entorno (solo booleanos).
+    $router->get('/api/admin/diagnostics/photos', $auth(static function (Request $r, array $p, AuthenticatedUser $u) use ($db): Response {
+        $allowed = false;
+        try { \PawLife\Auth\NotificationAdmin::assertAllowed($u, $db()); $allowed = true; } catch (HttpException) {}
+        if (!$allowed) \PawLife\Billing\ManualGrantService::assertAllowed($u, $db());
+        return Response::ok(\PawLife\Resources\PhotoDiagnostics::report());
+    }));
     // El panel informa qué capacidades tiene la cuenta; cada endpoint vuelve a comprobarlas.
     $router->get('/api/admin/session', $auth(static function (Request $r, array $p, AuthenticatedUser $u) use ($db): Response {
         $avisos = false;

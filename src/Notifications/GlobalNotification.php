@@ -36,6 +36,8 @@ final class GlobalNotification
     /** Política por cuenta, explícita: lo que exceda se cuenta como omitido, no se recorta en silencio. */
     public const MAX_DEVICES_PER_ACCOUNT = 5;
     private const LEASE_SECONDS = 120;
+    /** La función de Vercel muere a los 60 s: un tramo debe terminar antes (cada envío puede tardar hasta 10 s). */
+    public const MAX_SECONDS_PER_RUN = 35.0;
 
     public function __construct(
         private readonly GlobalNotificationStore $db,
@@ -119,8 +121,9 @@ final class GlobalNotification
      *
      * @return array<string, mixed>
      */
-    public function processNext(?DateTimeImmutable $clock = null): array
+    public function processNext(?DateTimeImmutable $clock = null, float $maxSeconds = self::MAX_SECONDS_PER_RUN): array
     {
+        $startedAt = microtime(true);
         $now = $clock ?? new DateTimeImmutable('now');
         $run = ['trabajo' => null, 'estado' => null, 'usuarios' => 0, 'envios' => 0];
         $jobs = $this->db->queryDocuments('notificationJobs', ['estado' => 'en_proceso'], null, 1);
@@ -165,7 +168,8 @@ final class GlobalNotification
         $cursor = $job['cursorUsuario'] ?? null;
 
         foreach ($page as $user) {
-            if ($sends >= self::MAX_SENDS_PER_RUN) { $finishedPage = false; break; }
+            // Siempre avanza al menos una persona; luego respeta envíos y tiempo.
+            if ($run['usuarios'] > 0 && ($sends >= self::MAX_SENDS_PER_RUN || microtime(true) - $startedAt > $maxSeconds)) { $finishedPage = false; break; }
             $delta = $this->processUser($jobId, (string) $job['mensaje'], $cutoff, $user['id'], $user['data'], $sends);
             foreach ($delta as $key => $value) {
                 if ($key === 'motivos') {

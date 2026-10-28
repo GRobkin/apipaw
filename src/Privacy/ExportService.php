@@ -15,7 +15,7 @@ use PawLife\Support\ResourceId;
 final class ExportService
 {
     public const ROOTS = ['mascotas', 'vacunas', 'medicamentos', 'alimentaciones', 'pesos', 'paseos',
-        'recordatorios', 'dispositivos', 'notificaciones', 'privacyRequests', 'consentEvents'];
+        'recordatorios', 'dispositivos', 'notificaciones', 'privacyRequests', 'consentEvents', 'premiumGrants'];
 
     public function __construct(private readonly FirestoreClient $db) {}
 
@@ -142,6 +142,8 @@ final class ExportService
             'notificaciones' => ['tipo', 'mensaje', 'estado', 'recordatorioId', 'creadoEn', 'actualizadoEn', 'enviadaEn'],
             'privacyRequests' => ['tipo', 'detalle', 'estado', 'creadoEn', 'actualizadoEn'],
             'consentEvents' => ['tipo', 'cambios', 'schemaVersion', 'creadoEn'],
+            // Sin los identificadores de quien la concedió o revocó.
+            'premiumGrants' => ['origen', 'creadoEn', 'terminaEn', 'revocadoEn', 'motivo'],
             default => throw new \LogicException('Categoría no exportable.'),
         };
         $result = ['id' => $category === 'dispositivos' ? 'installation-' . hash('sha256', $id) : $id];

@@ -11,7 +11,8 @@ use PawLife\Support\ResourceId;
 final class PrivacyService
 {
     public const BOOL_PREFERENCE_KEYS = ['recordatoriosCuidados', 'avisosEquipo'];
-    public const PREFERENCE_KEYS = ['recordatoriosCuidados', 'avisosEquipo', 'inactividad'];
+    public const LOCALES = ['es', 'en', 'pt'];
+    public const PREFERENCE_KEYS = ['recordatoriosCuidados', 'avisosEquipo', 'inactividad', 'idioma'];
     public const INACTIVITY_KEYS = ['habilitada', 'intervaloHoras', 'incluirSinPaseos'];
     // Límites técnicos, no clínicos: el intervalo definitivo es decisión de producto.
     public const INACTIVITY_MIN_HOURS = 12;
@@ -24,11 +25,13 @@ final class PrivacyService
     public static function preferences(array $profile): array
     {
         $stored = $profile['preferencias'] ?? [];
-        if (!is_array($stored)) return ['recordatoriosCuidados' => false, 'avisosEquipo' => false, 'inactividad' => self::inactivity(null)];
+        if (!is_array($stored)) return ['recordatoriosCuidados' => false, 'avisosEquipo' => false, 'inactividad' => self::inactivity(null), 'idioma' => 'es'];
         // Preserve existing service notifications; these defaults are not consent to marketing.
         return ['recordatoriosCuidados' => array_key_exists('recordatoriosCuidados', $stored) ? $stored['recordatoriosCuidados'] === true : true,
             'avisosEquipo' => array_key_exists('avisosEquipo', $stored) ? $stored['avisosEquipo'] === true : true,
-            'inactividad' => self::inactivity($stored['inactividad'] ?? null)];
+            'inactividad' => self::inactivity($stored['inactividad'] ?? null),
+            // Idioma de los avisos que genera el servidor; el de la interfaz lo decide la app.
+            'idioma' => in_array($stored['idioma'] ?? null, self::LOCALES, true) ? $stored['idioma'] : 'es'];
     }
 
     /** Aviso por falta de paseos: apagado por defecto (opt-in). */
@@ -101,6 +104,10 @@ final class PrivacyService
         if ($body === [] || array_diff(array_keys($body), self::PREFERENCE_KEYS) !== []) throw HttpException::badRequest('Preferencias inválidas.');
         foreach ($body as $key => $value) {
             if ($key === 'inactividad') { $body[$key] = self::validInactivity($value); continue; }
+            if ($key === 'idioma') {
+                if (!in_array($value, self::LOCALES, true)) throw HttpException::badRequest('Idioma no admitido.');
+                continue;
+            }
             if (!is_bool($value)) throw HttpException::badRequest('Las preferencias deben ser booleanas.');
         }
         (new WriteQuota($this->db))->reservePrivacy($uid, 'preferences');

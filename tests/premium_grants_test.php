@@ -166,4 +166,10 @@ $long = $svc->grant($admin, 'gina', array_replace($body, ['solicitudId' => 'ffff
 ok($long['activo'] === true, 'el tope configurado permite 45 días');
 rejects(fn () => $svc->grant($admin, 'gina', array_replace($body, ['solicitudId' => 'ffffffff-1234-1234-1234-123456789013', 'hasta' => $iso('+61 days')]), $now), 400);
 
+// ---- exportación de datos propios: concesiones sin datos de quien las gestionó ----
+ok(in_array('premiumGrants', PawLife\Privacy\ExportService::ROOTS, true), 'la exportación incluye las concesiones');
+$projected = PawLife\Privacy\ExportService::project('premiumGrants', $grantId, $memory->records['premiumGrants/' . $grantId]['data']);
+ok(isset($projected['terminaEn'], $projected['motivo']) && !array_key_exists('creadoPor', $projected) && !array_key_exists('revocadoPor', $projected)
+    && !array_key_exists('userId', $projected), 'la exportación no incluye identificadores de administradores');
+
 echo "TODO OK: premium manual (capacidad propia, reautenticación, validación, idempotencia, vencimiento al consultar, fuentes aisladas, auditoría, revocación concurrente, ciclo de vida)\n";
