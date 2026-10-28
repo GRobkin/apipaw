@@ -1,5 +1,11 @@
 # Decisiones de producto pendientes — propuestas (28/10/2026)
 
+## Decididas por el usuario (28/10/2026)
+- **Premium (T10):** sin cobro por ahora. Premium sigue siendo solo manual (T11) y el plan gratuito; no se elige proveedor, precio ni moneda hasta que haya usuarios.
+- **Moderación de avisos globales (T08):** solo confirmación de texto, como hoy. No se agrega segunda revisión ni proveedor automático.
+- **Retención al borrar cuenta con suscripción:** se mantiene el bloqueo (409 `ACCOUNT_BILLING_REVIEW_REQUIRED`) hasta cancelar. Como no hay cobro, hoy no afecta a nadie.
+- **W6 (Wear OS real):** sin decidir; el usuario preguntó para qué serviría (ver `PawLife/docs/PLAN_PENDIENTES_Y_RELOJ.md`).
+
 Son **propuestas para que decidas**; no hay nada aplicado salvo lo indicado. Cada una dice qué hace hoy el código y qué cambiaría.
 
 | Tema | Hoy en el código | Propuesta | Costo de cambiar |
