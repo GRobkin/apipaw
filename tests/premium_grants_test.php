@@ -172,4 +172,15 @@ $projected = PawLife\Privacy\ExportService::project('premiumGrants', $grantId, $
 ok(isset($projected['terminaEn'], $projected['motivo']) && !array_key_exists('creadoPor', $projected) && !array_key_exists('revocadoPor', $projected)
     && !array_key_exists('userId', $projected), 'la exportación no incluye identificadores de administradores');
 
+// ---- capacidades del panel y vista propia ----
+$memory->put('configuracion/premium', ['administradores' => ['premium-admin', 'solo-premium']]);
+$memory->put('configuracion/panel-notificaciones', ['administradores' => ['notif-admin', 'premium-admin']]);
+ok(PawLife\Auth\PanelCapabilities::resolve($notifOnly, $db) === ['avisos' => true, 'premium' => false], 'solo avisos');
+ok(PawLife\Auth\PanelCapabilities::resolve($admin, $db) === ['avisos' => true, 'premium' => true], 'ambas capacidades');
+ok(PawLife\Auth\PanelCapabilities::resolve(new AuthenticatedUser('solo-premium'), $db) === ['avisos' => false, 'premium' => true], 'solo premium entra al panel');
+rejects(fn () => PawLife\Auth\PanelCapabilities::resolve(new AuthenticatedUser('ana'), $db), 403);
+$self = $ent->selfView('carla', $now->modify('+2 hours'));
+ok(array_keys($self) === ['activo', 'estado', 'venceEn', 'fuentes'] && array_keys($self['fuentes']) === ['manual', 'pago'], 'la vista propia solo expone lo necesario');
+ok(!str_contains(json_encode($ent->selfView('legado', $now)), 'legacy') && $ent->selfView('legado', $now)['activo'] === false, 'la vista propia no revela valores heredados ni los concede');
+
 echo "TODO OK: premium manual (capacidad propia, reautenticación, validación, idempotencia, vencimiento al consultar, fuentes aisladas, auditoría, revocación concurrente, ciclo de vida)\n";

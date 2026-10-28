@@ -135,12 +135,7 @@ try {
     }));
     // El panel informa qué capacidades tiene la cuenta; cada endpoint vuelve a comprobarlas.
     $router->get('/api/admin/session', $auth(static function (Request $r, array $p, AuthenticatedUser $u) use ($db): Response {
-        $avisos = false;
-        $premium = false;
-        try { \PawLife\Auth\NotificationAdmin::assertAllowed($u, $db()); $avisos = true; } catch (HttpException) {}
-        try { \PawLife\Billing\ManualGrantService::assertAllowed($u, $db()); $premium = true; } catch (HttpException) {}
-        if (!$avisos && !$premium) \PawLife\Auth\NotificationAdmin::assertAllowed($u, $db()); // lanza el 403 de siempre
-        return Response::ok(['email' => $u->email, 'uid' => $u->uid, 'avisos' => $avisos, 'premium' => $premium]);
+        return Response::ok(['email' => $u->email, 'uid' => $u->uid] + \PawLife\Auth\PanelCapabilities::resolve($u, $db()));
     }));
     $router->get('/api/admin/notification-users', $auth(static function (Request $r, array $p, AuthenticatedUser $u) use ($admin, $db): Response {
         $admin($u);
@@ -185,9 +180,7 @@ try {
     }));
     // Estado propio recalculado en el servidor (la app no lo decide).
     $router->get('/api/me/premium', $auth(static function (Request $r, array $p, AuthenticatedUser $u) use ($db): Response {
-        $state = (new \PawLife\Billing\EntitlementService($db()))->effective($u->uid);
-        return Response::ok(['activo' => $state['activo'], 'estado' => $state['estado'], 'venceEn' => $state['venceEn'],
-            'fuentes' => ['manual' => $state['fuentes']['manual']['activa'], 'pago' => $state['fuentes']['pago']['activa']]]);
+        return Response::ok((new \PawLife\Billing\EntitlementService($db()))->selfView($u->uid));
     }));
 
     // Envío a todos: el trabajo lo procesa el cron; aquí solo se crea y se consulta.

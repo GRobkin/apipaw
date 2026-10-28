@@ -68,6 +68,19 @@ final class EntitlementService
         ];
     }
 
+    /**
+     * Lo que ve la propia persona: si está activo, hasta cuándo y qué fuente lo
+     * respalda. Sin datos heredados, sin concesiones ni quién las otorgó.
+     *
+     * @return array{activo: bool, estado: string, venceEn: ?string, fuentes: array{manual: bool, pago: bool}}
+     */
+    public function selfView(string $uid, ?DateTimeImmutable $now = null): array
+    {
+        $state = $this->effective($uid, $now);
+        return ['activo' => $state['activo'], 'estado' => $state['estado'], 'venceEn' => $state['venceEn'],
+            'fuentes' => ['manual' => $state['fuentes']['manual']['activa'], 'pago' => $state['fuentes']['pago']['activa']]];
+    }
+
     /** Fin de la concesión si sigue vigente (no revocada y no vencida); null si no. */
     public static function activeGrantEnd(array $grant, DateTimeImmutable $now): ?DateTimeImmutable
     {
