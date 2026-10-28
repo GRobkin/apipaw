@@ -11,7 +11,7 @@ Son **propuestas para que decidas**; no hay nada aplicado salvo lo indicado. Cad
 | Envíos inciertos | No se reintentan; se cuentan aparte | Mantener la regla. Más adelante, un botón «reenviar a inciertos» que muestre cuántos son y pida confirmación | Medio |
 | Beneficios de Premium (T10) | Ninguno autorizado todavía | Candidatos: informe veterinario en PDF y estadísticas avanzadas (ver plan). Precio, moneda, proveedor y país los fijás vos | Alto |
 | Valores `premium` heredados | Se informan como `legacy` y **no** conceden acceso | Correr `tool/report-data-issues.cjs`-style inventario por usuario antes de decidir; no migrarlos en masa | Bajo |
-| Calorías (T14) | La app dice «no disponible»; no hay fórmula | No mostrar cifras hasta tener un modelo validado por un veterinario. Mientras tanto, mantener el mensaje | — |
+| Calorías (T14 / US27) | **Descartada por el equipo (28/10/2026).** Se quitó el aviso «Calorías: no disponible» de la app | — | — |
 | Visitas al veterinario | Una tarjeta «Sin agendar» sin entidad detrás | Alcance mínimo: fecha, motivo corto y recordatorio; sin adjuntos ni historial clínico | Medio–alto |
 | Tope de duración de Premium manual | 30 días si no hay configuración | Fijar `duracionMaximaDias` con `tool/configure-premium-admins.cjs` | Bajo |
 
