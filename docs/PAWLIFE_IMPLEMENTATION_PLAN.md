@@ -49,7 +49,7 @@ Los tests locales no certifican seguridad integral, configuración desplegada ni
 | US21 Premium | Campos `premium`, `premiumHasta`; sin sistema de compra completo | T10–T11; beneficios, productos y cuentas pendientes |
 | US22–23 tareas | Listado de recordatorios y marcado existente | Regresión; no crear otro sistema de tareas |
 | US25 notas / US26 anticipación | Notas y `anticipacionDias` de vacunas existentes | Verificar alta/edición y reprogramación, no duplicar |
-| US27 calorías | No estimación validada | T14 condicionado a validación veterinaria |
+| US27 calorías | Descartada por el equipo (28/10/2026) | T14 eliminado del alcance |
 | US28 idiomas | `main.dart` fija `Locale('es')`, solo español | T12; Flutter solamente |
 | US29 apariencia | Tema único; colores fijos en varias pantallas | T13, sin rediseño general |
 | Panel | Selección de hasta 20 personas; cliente envía una petición por UID | Mantener selección, agregar global T09; no es solo una persona |
@@ -316,20 +316,9 @@ No se verificaron región de datos, subencargados, plazos de terceros ni contrat
 11. **Aceptación:** todas las pantallas y controles utilizables; preferencia restaurada; sin rebranding ni cambios al panel.
 12. **Riesgos/decisiones:** aprobar default si se prefiere claro; mapa conserva estilo autorizado aunque marco sea oscuro.
 
-### T14. Calorías: bloqueado por validación, no por UI
+### T14. Calorías — eliminado
 
-1. **Origen:** US27, inicialmente fuera de alcance y ahora condicionado.
-2. **Actual:** no modelo validado identificado.
-3. **Objetivo:** incorporar solo una estimación respaldada y aplicable a especies/datos reales.
-4. **Archivos:** futuros cambios limitados a modelos/peso/resumen/servicio de cálculo; **NUEVO** `docs/CALORIE_MODEL_VALIDATION.md` antes de cualquier código.
-5. **Cambios:** documentar fuente veterinaria, población/especie, unidades, rango de validez, incertidumbre y variables requeridas. No usar fórmula de humano ni requerimiento energético diario como gasto del paseo.
-6. **API:** ninguno autorizado hasta definir modelo. Si se aprueba, cálculo servidor versionado o verificación equivalente; nunca aceptar cifra cliente como dato clínico cierto.
-7. **Datos:** versión de modelo/inputs/fecha y estimación, solo si aprobados. No inventar masa corporal faltante.
-8. **Autorización/validación:** propietario, datos vigentes, rangos del modelo; no consejo clínico automático.
-9. **Dependencias:** aprobación veterinaria, T02 peso y calidad GPS.
-10. **Pruebas:** casos de referencia del modelo, unidades/extremos/faltantes; comparación por profesional.
-11. **Aceptación:** aprobación explícita y ejemplos reproducibles; mientras tanto requisito marcado condicionado, sin número ficticio.
-12. **Riesgos/decisiones:** puede quedar fuera de entrega del profesor si no existe validación; comunicarlo claramente.
+Descartado por el equipo el 28/10/2026 (US27). No se calcula ni se muestra ninguna cifra de calorías; se quitó el aviso de la app.
 
 ## 11. Etapa 9 — Integración y distribución
 
