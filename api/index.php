@@ -183,6 +183,15 @@ try {
         return Response::ok((new \PawLife\Billing\EntitlementService($db()))->selfView($u->uid));
     }));
 
+    // Compra de prueba propia (sin cobro): ver TestPurchaseService.
+    $router->post('/api/me/premium/test-purchase', $auth(static function (Request $r, array $p, AuthenticatedUser $u) use ($db): Response {
+        (new \PawLife\Notifications\ReminderRateLimiter($db()))->consume('premium-test:' . $u->uid);
+        return Response::ok((new \PawLife\Billing\TestPurchaseService($db()))->buy($u->uid, $r->body['plan'] ?? null));
+    }));
+    $router->delete('/api/me/premium/test-purchase', $auth(static function (Request $r, array $p, AuthenticatedUser $u) use ($db): Response {
+        return Response::ok((new \PawLife\Billing\TestPurchaseService($db()))->cancel($u->uid));
+    }));
+
     // Envío a todos: el trabajo lo procesa el cron; aquí solo se crea y se consulta.
     $router->post('/api/admin/notifications/global', $auth(static function (Request $r, array $p, AuthenticatedUser $u) use ($db): Response {
         return new Response(202, (new \PawLife\Notifications\GlobalNotification($db(), new \PawLife\Notifications\FcmSender()))->create($u, $r->body));

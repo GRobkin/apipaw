@@ -36,9 +36,17 @@ final class EntitlementService
     {
         $now ??= new DateTimeImmutable('now');
         $manualUntil = null;
+        $testUntil = null;
         foreach ($this->db->queryDocuments('premiumGrants', ['userId' => $uid], 'creadoEn desc', 100) as $grant) {
             $until = self::activeGrantEnd($grant['data'], $now);
-            if ($until !== null && ($manualUntil === null || $until > $manualUntil)) $manualUntil = $until;
+            if ($until === null) continue;
+            // La compra de prueba cuenta como Premium pero se informa aparte
+            // de las concesiones del equipo.
+            if (($grant['data']['origen'] ?? null) === 'prueba') {
+                if ($testUntil === null || $until > $testUntil) $testUntil = $until;
+            } elseif ($manualUntil === null || $until > $manualUntil) {
+                $manualUntil = $until;
+            }
         }
         $paidUntil = null;
         foreach ($this->db->queryDocuments('subscriptions', ['userId' => $uid], 'creadoEn desc', 20) as $subscription) {
@@ -49,7 +57,7 @@ final class EntitlementService
                 $paidUntil = $end;
             }
         }
-        $until = max($manualUntil, $paidUntil);
+        $until = max($manualUntil, $paidUntil, $testUntil);
         $profile = $this->db->getDocument('users/' . $uid) ?? [];
         $legacyUntil = $profile['premiumHasta'] ?? null;
 
@@ -60,6 +68,7 @@ final class EntitlementService
             'fuentes' => [
                 'manual' => ['activa' => $manualUntil !== null, 'venceEn' => $manualUntil?->format(DATE_ATOM)],
                 'pago' => ['activa' => $paidUntil !== null, 'venceEn' => $paidUntil?->format(DATE_ATOM)],
+                'prueba' => ['activa' => $testUntil !== null, 'venceEn' => $testUntil?->format(DATE_ATOM)],
             ],
             'legacy' => [
                 'premium' => ($profile['premium'] ?? false) === true,
@@ -78,7 +87,8 @@ final class EntitlementService
     {
         $state = $this->effective($uid, $now);
         return ['activo' => $state['activo'], 'estado' => $state['estado'], 'venceEn' => $state['venceEn'],
-            'fuentes' => ['manual' => $state['fuentes']['manual']['activa'], 'pago' => $state['fuentes']['pago']['activa']]];
+            'fuentes' => ['manual' => $state['fuentes']['manual']['activa'], 'pago' => $state['fuentes']['pago']['activa'],
+                'prueba' => $state['fuentes']['prueba']['activa']]];
     }
 
     /** Fin de la concesión si sigue vigente (no revocada y no vencida); null si no. */
