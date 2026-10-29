@@ -70,3 +70,23 @@ putenv('PREMIUM_TEST_PURCHASES=0'); $_ENV['PREMIUM_TEST_PURCHASES'] = '0';
 try { $svc->buy('otra', 'mensual'); throw new RuntimeException('debía estar apagado'); }
 catch (HttpException $e) { ok($e->status() === 403 && $e->errorCode === 'TEST_PURCHASES_DISABLED', 'apagado -> 403'); }
 echo "test_purchase OK\n";
+
+// ---- tareas pendientes: tope del plan gratuito ----
+putenv('PREMIUM_TEST_PURCHASES=1'); $_ENV['PREMIUM_TEST_PURCHASES'] = '1';
+$m3 = new MemoryFirestoreTransport();
+$d3 = new FirestoreClient('test-project', null, $m3);
+$hoy = new DateTimeImmutable('+1 day');
+for ($i = 1; $i <= 5; $i++) {
+    $m3->put("recordatorios/t$i", ['userId' => 'dani', 'tipo' => 'tarea', 'completado' => false, 'fecha' => $hoy, 'mensaje' => "t$i", 'mascotaId' => 'x']);
+}
+// Los avisos automáticos (vacuna) no cuentan contra el tope.
+$m3->put('recordatorios/v1', ['userId' => 'dani', 'tipo' => 'vacuna', 'completado' => false, 'fecha' => $hoy, 'mensaje' => 'v', 'mascotaId' => 'x']);
+try { PlanLimits::assertCanAddTask($d3, 'dani'); throw new RuntimeException('la sexta tarea debía rechazarse'); }
+catch (HttpException $e) { ok($e->status() === 402 && $e->errorCode === 'PLAN_TASK_LIMIT', 'tope de tareas'); }
+// Completar una libera cupo.
+$m3->put('recordatorios/t1', ['userId' => 'dani', 'tipo' => 'tarea', 'completado' => true, 'fecha' => $hoy, 'mensaje' => 't1', 'mascotaId' => 'x']);
+PlanLimits::assertCanAddTask($d3, 'dani');
+(new TestPurchaseService($d3))->buy('dani', 'mensual');
+$m3->put('recordatorios/t1', ['userId' => 'dani', 'tipo' => 'tarea', 'completado' => false, 'fecha' => $hoy, 'mensaje' => 't1', 'mascotaId' => 'x']);
+PlanLimits::assertCanAddTask($d3, 'dani'); // con Premium no hay tope
+echo "task_limit OK\n";

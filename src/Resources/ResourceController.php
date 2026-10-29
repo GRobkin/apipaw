@@ -111,7 +111,7 @@ final class ResourceController
         }
         // Solo al crear (no al editar): límites del plan, p. ej. mascotas.
         if ($this->beforeCreate !== null) {
-            ($this->beforeCreate)($user);
+            ($this->beforeCreate)($user, $data);
         }
 
         $now = new DateTimeImmutable();

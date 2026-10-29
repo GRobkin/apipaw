@@ -360,7 +360,7 @@ try {
         ),
         null,
         // Plan gratuito: tope de mascotas. Premium (concedido o pagado) no tiene.
-        static function (AuthenticatedUser $u) use ($db): void {
+        static function (AuthenticatedUser $u, array $data = []) use ($db): void {
             \PawLife\Billing\PlanLimits::assertCanAddPet($db(), $u->uid);
         },
     );
@@ -436,6 +436,12 @@ try {
         $porUsuario,
         null,
         $validateRecordatorio,
+        // Plan gratuito: tope de tareas pendientes (las automáticas no cuentan).
+        static function (AuthenticatedUser $u, array $data = []) use ($db): void {
+            if (($data['tipo'] ?? null) === 'tarea') {
+                \PawLife\Billing\PlanLimits::assertCanAddTask($db(), $u->uid);
+            }
+        },
     );
 
     // Borrado reanudable: reserva la cuenta (barrera persistente) y avanza por pasos.
