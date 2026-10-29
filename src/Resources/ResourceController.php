@@ -39,6 +39,7 @@ final class ResourceController
         private readonly mixed $scope = null,
         private readonly mixed $cascadePlan = null,
         private readonly mixed $validateWrite = null,
+        private readonly mixed $beforeCreate = null,
     ) {
     }
 
@@ -107,6 +108,10 @@ final class ResourceController
         }
         if ($this->validateWrite !== null) {
             ($this->validateWrite)($data, $user);
+        }
+        // Solo al crear (no al editar): límites del plan, p. ej. mascotas.
+        if ($this->beforeCreate !== null) {
+            ($this->beforeCreate)($user);
         }
 
         $now = new DateTimeImmutable();

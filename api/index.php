@@ -282,6 +282,7 @@ try {
         ?callable $scope = null,
         ?callable $cascadePlan = null,
         ?callable $validateWrite = null,
+        ?callable $beforeCreate = null,
     ) use ($router, $auth, $db): void {
         // El controlador se construye en la primera peticion que lo use, no al
         // registrar la ruta: asi /api/health sigue contestando aunque falten
@@ -297,6 +298,7 @@ try {
             $scope,
             $cascadePlan,
             $validateWrite,
+            $beforeCreate,
         ): ResourceController {
             return $controller ??= new ResourceController(
                 $schema,
@@ -307,6 +309,7 @@ try {
                 $scope,
                 $cascadePlan,
                 $validateWrite,
+                $beforeCreate,
             );
         };
 
@@ -346,6 +349,11 @@ try {
             ['vacunas', 'medicamentos', 'alimentaciones', 'pesos', 'visitas', 'paseos', 'recordatorios'],
             ['userId' => $u->uid, 'mascotaId' => $id],
         ),
+        null,
+        // Plan gratuito: tope de mascotas. Premium (concedido o pagado) no tiene.
+        static function (AuthenticatedUser $u) use ($db): void {
+            \PawLife\Billing\PlanLimits::assertCanAddPet($db(), $u->uid);
+        },
     );
 
     foreach ([
