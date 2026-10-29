@@ -117,9 +117,11 @@ try {
 
     $router->get('/api/mascotas/{mascotaId}/historial-paseos', $auth(static function (Request $r, array $p, AuthenticatedUser $u) use ($db): Response {
         $page = $db()->walkHistoryPage($u->uid, $p['mascotaId'], $r->queryParam('cursor'));
+        // Plan gratuito: solo los últimos 30 días (ver PlanLimits::limitWalks).
+        [$shown, $cut] = \PawLife\Billing\PlanLimits::limitWalks($db(), $u->uid, $page['documents']);
         return Response::ok([
-            'items' => array_map(static fn (array $doc): array => Catalog::paseos()->toJson($doc['id'], $doc['data']), $page['documents']),
-            'nextCursor' => $page['nextCursor'],
+            'items' => array_map(static fn (array $doc): array => Catalog::paseos()->toJson($doc['id'], $doc['data']), $shown),
+            'nextCursor' => $cut ? null : $page['nextCursor'],
         ]);
     }));
 

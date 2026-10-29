@@ -64,14 +64,23 @@ final class ResourceController
             $cap = match ($path) { 'mascotas' => 4, 'paseos' => 2, default => 100 };
             $page = $this->firestore->queryPage($path, $filters, $orderBy,
                 min((int) $size, $numericLimit ?? 100, $cap), $request->queryParam('cursor'));
+            $shown = $page['documents'];
+            $next = $page['nextCursor'];
+            if ($path === 'paseos') {
+                [$shown, $cut] = \PawLife\Billing\PlanLimits::limitWalks($this->firestore, $user->uid, $shown);
+                if ($cut) $next = null;
+            }
             return Response::ok([
-                'items' => array_map(fn (array $doc): array => $this->schema->toJson($doc['id'], $doc['data']), $page['documents']),
-                'nextCursor' => $page['nextCursor'],
+                'items' => array_map(fn (array $doc): array => $this->schema->toJson($doc['id'], $doc['data']), $shown),
+                'nextCursor' => $next,
             ]);
         }
         $documents = $filters === []
             ? $this->firestore->listDocuments($path, $orderBy, $numericLimit)
             : $this->firestore->queryDocuments($path, $filters, $orderBy, $numericLimit);
+        if ($path === 'paseos') {
+            [$documents] = \PawLife\Billing\PlanLimits::limitWalks($this->firestore, $user->uid, $documents);
+        }
 
         $items = array_map(
             fn (array $doc) => $this->schema->toJson($doc['id'], $doc['data']),

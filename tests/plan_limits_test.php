@@ -90,3 +90,22 @@ PlanLimits::assertCanAddTask($d3, 'dani');
 $m3->put('recordatorios/t1', ['userId' => 'dani', 'tipo' => 'tarea', 'completado' => false, 'fecha' => $hoy, 'mensaje' => 't1', 'mascotaId' => 'x']);
 PlanLimits::assertCanAddTask($d3, 'dani'); // con Premium no hay tope
 echo "task_limit OK\n";
+
+// ---- historial de paseos: 30 días en el plan gratuito ----
+$m4 = new MemoryFirestoreTransport();
+$d4 = new FirestoreClient('test-project', null, $m4);
+$now4 = new DateTimeImmutable('2026-10-29T12:00:00Z');
+$docs = [
+    ['id' => 'nuevo', 'data' => ['fechaInicio' => $now4->modify('-2 days')]],
+    ['id' => 'justo', 'data' => ['fechaInicio' => $now4->modify('-29 days')]],
+    ['id' => 'viejo', 'data' => ['fechaInicio' => $now4->modify('-31 days')]],
+    ['id' => 'antiguo', 'data' => ['fechaInicio' => $now4->modify('-200 days')]],
+];
+[$vis, $cut] = PlanLimits::limitWalks($d4, 'eva', $docs, $now4);
+ok(array_column($vis, 'id') === ['nuevo', 'justo'] && $cut === true, 'gratis ve solo los últimos 30 días');
+[$vis2, $cut2] = PlanLimits::limitWalks($d4, 'eva', array_slice($docs, 0, 2), $now4);
+ok(count($vis2) === 2 && $cut2 === false, 'sin paseos viejos no se recorta');
+$m4->put('premiumGrants/g9', ['userId' => 'eva', 'origen' => 'manual', 'creadoEn' => $now4, 'terminaEn' => $now4->modify('+10 days'), 'revocadoEn' => null]);
+[$vis3, $cut3] = PlanLimits::limitWalks($d4, 'eva', $docs, $now4);
+ok(count($vis3) === 4 && $cut3 === false, 'Premium ve todo el historial');
+echo "walk_history_limit OK\n";
