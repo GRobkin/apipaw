@@ -17,7 +17,7 @@ final class PlanLimits
 {
     public const FREE_MAX_PETS = 2;
     public const FREE_MAX_PENDING_TASKS = 5;
-    public const FREE_HISTORY_DAYS = 30;
+    public const FREE_HISTORY_DAYS = 7;
 
     public static function assertCanAddPet(FirestoreClient $db, string $uid): void
     {
