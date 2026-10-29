@@ -343,7 +343,7 @@ try {
         [],
         $porUsuario,
         static fn (AuthenticatedUser $u, array $p, string $id): array => array_fill_keys(
-            ['vacunas', 'medicamentos', 'alimentaciones', 'pesos', 'paseos', 'recordatorios'],
+            ['vacunas', 'medicamentos', 'alimentaciones', 'pesos', 'visitas', 'paseos', 'recordatorios'],
             ['userId' => $u->uid, 'mascotaId' => $id],
         ),
     );
@@ -352,6 +352,7 @@ try {
         'vacunas' => Catalog::vacunas(),
         'medicamentos' => Catalog::medicamentos(),
         'pesos' => Catalog::pesos(),
+        'visitas' => Catalog::visitas(),
         'paseos' => Catalog::paseos(),
         'alimentaciones' => Catalog::alimentaciones(),
     ] as $nombre => $schema) {

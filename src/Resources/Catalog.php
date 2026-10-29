@@ -14,7 +14,7 @@ namespace PawLife\Resources;
  *   users/{uid}  (perfil)
  *   mascotas/{id}
  *   vacunas/{id}, medicamentos/{id}, alimentaciones/{id}
- *   pesos/{id}, paseos/{id}, recordatorios/{id}, dispositivos/{id}
+ *   pesos/{id}, visitas/{id}, paseos/{id}, recordatorios/{id}, dispositivos/{id}
  *
  * Las entidades de cuidado también llevan mascotaId. Las subcolecciones
  * antiguas se conservan temporalmente para verificar la migración.
@@ -95,6 +95,17 @@ final class Catalog
         return new Schema('registro de peso', [
             Field::timestamp('fecha', required: true, nullable: false),
             Field::double('valorKg', required: true),
+        ], defaultOrderBy: 'fecha desc');
+    }
+
+    public static function visitas(): Schema
+    {
+        return new Schema('visita veterinaria', [
+            Field::timestamp('fecha', required: true, nullable: false),
+            Field::string('motivo', required: true, nullable: false),
+            Field::string('veterinario'),
+            Field::string('notas'),
+            Field::timestamp('proximaFecha'),
         ], defaultOrderBy: 'fecha desc');
     }
 

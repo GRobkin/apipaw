@@ -14,7 +14,7 @@ use PawLife\Support\ResourceId;
 /** One authenticated page at a time; sessions retain positions, never exported payloads. */
 final class ExportService
 {
-    public const ROOTS = ['mascotas', 'vacunas', 'medicamentos', 'alimentaciones', 'pesos', 'paseos',
+    public const ROOTS = ['mascotas', 'vacunas', 'medicamentos', 'alimentaciones', 'pesos', 'visitas', 'paseos',
         'recordatorios', 'dispositivos', 'notificaciones', 'privacyRequests', 'consentEvents', 'premiumGrants'];
 
     public function __construct(private readonly FirestoreClient $db) {}
@@ -134,7 +134,7 @@ final class ExportService
 
     public static function project(string $category, string $id, array $data): array
     {
-        if (in_array($category, ['mascotas', 'vacunas', 'medicamentos', 'alimentaciones', 'pesos', 'paseos', 'recordatorios'], true)) {
+        if (in_array($category, ['mascotas', 'vacunas', 'medicamentos', 'alimentaciones', 'pesos', 'visitas', 'paseos', 'recordatorios'], true)) {
             return Catalog::{$category}()->toJson($id, $data);
         }
         $allowed = match ($category) {

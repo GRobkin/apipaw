@@ -61,6 +61,12 @@ final class CareValidator
                 $errors['horarios'] = 'Indicá horarios en formato HH:mm.';
             }
         }
+        if ($resource === 'visitas'
+            && ($data['fecha'] ?? null) instanceof DateTimeInterface
+            && ($data['proximaFecha'] ?? null) instanceof DateTimeInterface
+            && $data['proximaFecha'] < $data['fecha']) {
+            $errors['proximaFecha'] = 'Debe ser posterior a la visita.';
+        }
         if ($resource === 'pesos' && isset($data['valorKg']) && $data['valorKg'] <= 0) {
             $errors['valorKg'] = 'Debe ser mayor que cero.';
         }

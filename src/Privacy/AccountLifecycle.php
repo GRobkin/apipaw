@@ -11,7 +11,7 @@ use PawLife\Support\ResourceId;
 /** Every ordinary owned mutation touches this persistent barrier in the same commit. */
 final class AccountLifecycle
 {
-    public const OWNED = ['mascotas', 'vacunas', 'medicamentos', 'alimentaciones', 'pesos', 'paseos',
+    public const OWNED = ['mascotas', 'vacunas', 'medicamentos', 'alimentaciones', 'pesos', 'visitas', 'paseos',
         'recordatorios', 'dispositivos', 'notificaciones', 'operationQuotas', 'privacyRequests', 'consentEvents', 'exportSessions',
         'premiumGrants', 'premiumAudit'];
 
