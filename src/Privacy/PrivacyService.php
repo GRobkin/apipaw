@@ -12,7 +12,8 @@ final class PrivacyService
 {
     public const BOOL_PREFERENCE_KEYS = ['recordatoriosCuidados', 'avisosEquipo'];
     public const LOCALES = ['es', 'en', 'pt'];
-    public const PREFERENCE_KEYS = ['recordatoriosCuidados', 'avisosEquipo', 'inactividad', 'idioma'];
+    public const PREFERENCE_KEYS = ['recordatoriosCuidados', 'avisosEquipo', 'inactividad', 'idioma', 'noMolestar'];
+    public const QUIET_KEYS = ['habilitada', 'desdeMin', 'hastaMin', 'zonaHoraria'];
     public const INACTIVITY_KEYS = ['habilitada', 'intervaloHoras', 'incluirSinPaseos'];
     // Límites técnicos, no clínicos: el intervalo definitivo es decisión de producto.
     public const INACTIVITY_MIN_HOURS = 12;
@@ -25,11 +26,12 @@ final class PrivacyService
     public static function preferences(array $profile): array
     {
         $stored = $profile['preferencias'] ?? [];
-        if (!is_array($stored)) return ['recordatoriosCuidados' => false, 'avisosEquipo' => false, 'inactividad' => self::inactivity(null), 'idioma' => 'es'];
+        if (!is_array($stored)) return ['recordatoriosCuidados' => false, 'avisosEquipo' => false, 'inactividad' => self::inactivity(null), 'idioma' => 'es', 'noMolestar' => QuietHours::normalize(null)];
         // Preserve existing service notifications; these defaults are not consent to marketing.
         return ['recordatoriosCuidados' => array_key_exists('recordatoriosCuidados', $stored) ? $stored['recordatoriosCuidados'] === true : true,
             'avisosEquipo' => array_key_exists('avisosEquipo', $stored) ? $stored['avisosEquipo'] === true : true,
             'inactividad' => self::inactivity($stored['inactividad'] ?? null),
+            'noMolestar' => QuietHours::normalize($stored['noMolestar'] ?? null),
             // Idioma de los avisos que genera el servidor; el de la interfaz lo decide la app.
             'idioma' => in_array($stored['idioma'] ?? null, self::LOCALES, true) ? $stored['idioma'] : 'es'];
     }
@@ -62,6 +64,26 @@ final class PrivacyService
                 || $value['intervaloHoras'] > self::INACTIVITY_MAX_HOURS)) {
             throw HttpException::badRequest('El intervalo debe estar entre ' . self::INACTIVITY_MIN_HOURS
                 . ' y ' . self::INACTIVITY_MAX_HOURS . ' horas.');
+        }
+        return $value;
+    }
+
+    /** @return array<string, mixed> el valor válido de `noMolestar` enviado por el cliente */
+    private static function validQuiet(mixed $value): array
+    {
+        if (!is_array($value) || $value === [] || array_is_list($value) || array_diff(array_keys($value), self::QUIET_KEYS) !== []) {
+            throw HttpException::badRequest('Horario de no molestar inválido.');
+        }
+        if (array_key_exists('habilitada', $value) && !is_bool($value['habilitada'])) {
+            throw HttpException::badRequest('Horario de no molestar inválido.');
+        }
+        foreach (['desdeMin', 'hastaMin'] as $k) {
+            if (array_key_exists($k, $value) && QuietHours::minutes($value[$k]) === null) {
+                throw HttpException::badRequest('Horario de no molestar inválido.');
+            }
+        }
+        if (array_key_exists('zonaHoraria', $value) && (!is_string($value['zonaHoraria']) || !QuietHours::validZone($value['zonaHoraria']))) {
+            throw HttpException::badRequest('Zona horaria inválida.');
         }
         return $value;
     }
@@ -104,6 +126,7 @@ final class PrivacyService
         if ($body === [] || array_diff(array_keys($body), self::PREFERENCE_KEYS) !== []) throw HttpException::badRequest('Preferencias inválidas.');
         foreach ($body as $key => $value) {
             if ($key === 'inactividad') { $body[$key] = self::validInactivity($value); continue; }
+            if ($key === 'noMolestar') { $body[$key] = self::validQuiet($value); continue; }
             if ($key === 'idioma') {
                 if (!in_array($value, self::LOCALES, true)) throw HttpException::badRequest('Idioma no admitido.');
                 continue;
@@ -115,7 +138,11 @@ final class PrivacyService
         $before = self::preferences($profile['data']);
         $after = $before;
         foreach ($body as $key => $value) {
-            $after[$key] = $key === 'inactividad' ? self::inactivity(array_merge($before['inactividad'], $value)) : $value;
+            $after[$key] = match ($key) {
+                'inactividad' => self::inactivity(array_merge($before['inactividad'], $value)),
+                'noMolestar' => QuietHours::normalize(array_merge($before['noMolestar'], $value)),
+                default => $value,
+            };
         }
         if ($before === $after) return ['preferencias' => $after];
         $changes = [];

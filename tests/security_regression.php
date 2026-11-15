@@ -126,6 +126,17 @@ expect($dispatcher2->dispatch($now)['enviados'] === 10, 'el presupuesto de envio
 expect($dispatcher2->dispatch($now)['enviados'] === 1, 'el dispositivo restante debe salir en el ciclo siguiente');
 expect(count($sender2->sent) === 11, 'ningun dispositivo debe recibir un duplicado');
 
+$db3 = new MemoryReminderStore();
+$db3->documents['users/calla'] = ['estadoCuenta' => 'activa', 'preferencias' => ['noMolestar' => ['habilitada' => true, 'desdeMin' => 0, 'hastaMin' => 1439, 'zonaHoraria' => 'UTC']]];
+$db3->documents['users/libre'] = ['estadoCuenta' => 'activa'];
+$sender3 = new MemoryPushSender();
+$db3->reminders[] = reminder('c1', 'calla', $date);
+$db3->reminders[] = reminder('c2', 'libre', $date);
+$db3->devices['calla'] = [['id' => 'dc', 'data' => ['token' => 'tok-calla', 'activo' => true]]];
+$db3->devices['libre'] = [['id' => 'dl', 'data' => ['token' => 'tok-libre', 'activo' => true]]];
+(new PushDispatcher($db3, $sender3))->dispatch($now);
+expect($sender3->sent === [['tok-libre', 'c2']], 'no molestar debe omitir solo al usuario en su franja');
+
 $quotaStore = new MemoryReminderStore();
 $limiter = new ReminderRateLimiter($quotaStore);
 $quotaClock = new DateTimeImmutable('2026-10-11T10:00:00Z');

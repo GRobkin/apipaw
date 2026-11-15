@@ -65,7 +65,8 @@ final class PushDispatcher
                 foreach ($devicesByUser[$uid] as $device) {
                     $profile = $this->db->getDocument('users/' . $uid);
                     if ($profile === null || ($profile['estadoCuenta'] ?? 'activa') !== 'activa'
-                        || !\PawLife\Privacy\PrivacyService::preferences($profile)['recordatoriosCuidados']) {
+                        || !\PawLife\Privacy\PrivacyService::preferences($profile)['recordatoriosCuidados']
+                        || \PawLife\Privacy\QuietHours::isQuiet($profile, $now)) {
                         $stats['omitidos']++;
                         continue;
                     }

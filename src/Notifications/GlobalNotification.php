@@ -307,7 +307,8 @@ final class GlobalNotification
     private static function eligible(array $profile): bool
     {
         return ($profile['estadoCuenta'] ?? 'activa') === 'activa'
-            && PrivacyService::preferences($profile)['avisosEquipo'] === true;
+            && PrivacyService::preferences($profile)['avisosEquipo'] === true
+            && !\PawLife\Privacy\QuietHours::isQuiet($profile, new DateTimeImmutable('now'));
     }
 
     /** @param array<string, mixed> $delta */
