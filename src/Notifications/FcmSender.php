@@ -32,7 +32,10 @@ final class FcmSender implements PushSender
                         'mascotaId' => $petId,
                         'tipo' => $type,
                     ],
-                    'android' => ['priority' => 'HIGH'],
+                    'android' => ['priority' => 'HIGH', 'notification' => [
+                        // Icono de barra de estado (huella), verde de marca y el canal de la app.
+                        'icon' => 'ic_stat_pawlife', 'color' => '#12352A', 'channel_id' => 'pawlife_cuidados',
+                    ]],
                     'apns' => ['payload' => ['aps' => ['sound' => 'default']]],
                 ]],
                 10,
