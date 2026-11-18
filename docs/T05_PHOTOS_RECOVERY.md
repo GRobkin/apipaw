@@ -1,4 +1,4 @@
-# T05 — Fotos y recuperación local
+# T05: Fotos y recuperación local
 
 Estado local, 20/10/2026. No publicado. No se exportaron datos reales.
 

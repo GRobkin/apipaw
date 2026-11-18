@@ -1,9 +1,9 @@
-# Paquete para la revisión externa de seguridad (28/10/2026)
+# Revisión externa de seguridad: material de apoyo
 
-Esto **no es** la revisión: prepara el trabajo de quien la haga (una persona o equipo ajeno). La revisión externa no se puede hacer desde el código ni por quien lo escribió.
+Este documento no es la revisión. Reúne lo que necesita quien la haga, una persona o un equipo ajeno al proyecto.
 
-## Qué revisar (código nuevo desde la auditoría del 15/10)
-Ramas locales de `apipaw` (encadenadas): `respaldo/etapas-1-3-borrado-y-correo` → `feature/t04-inactividad` → `feature/t09-enviar-a-todos` → `feature/t11-premium-manual`. App: `PawLife` `feature/us28-us29-idiomas-tema`.
+## Qué revisar
+El código de `apipaw` en la rama `master` y el de la app en `PawLife` (`master`).
 
 | Área | Archivos | Pregunta clave |
 |---|---|---|
@@ -32,5 +32,5 @@ node --test tests/*.mjs
 cd ../PawLife && flutter analyze && flutter test
 ```
 
-## Qué necesita el revisor de vos
+## Accesos necesarios
 Acceso de solo lectura al repositorio (ramas arriba), al proyecto Firebase `pawlife-84d14` (reglas, IAM, índices) y a la configuración de Vercel/Cloudflare, sin secretos en claro.

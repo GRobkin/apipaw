@@ -1,4 +1,4 @@
-# T05 — Paginación y dispositivos
+# T05: Paginación y dispositivos
 
 Implementado y probado localmente el 20/10/2026. No desplegado.
 

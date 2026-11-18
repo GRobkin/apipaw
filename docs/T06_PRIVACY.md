@@ -1,4 +1,4 @@
-# Etapa 3 — Primer tramo de T06
+# Etapa 3: Primer tramo de T06
 
 20/10/2026. Implementado y probado localmente; no publicado. Las comprobaciones externas de etapa 2 quedan pendientes por decisión expresa del usuario y no bloquean este trabajo. Esta entrega no cierra T06 ni T07.
 
@@ -12,7 +12,7 @@ Las credenciales, roles y datos de otra persona no se aceptan desde los formular
 
 GET `/api/me/privacy` devuelve preferencias, disponibilidad del canal y aviso de exportación. No se publicó una política jurídica ficticia: `politicaPublicada=false`.
 
-PATCH `/api/me/preferences` admite exclusivamente booleanos `recordatoriosCuidados` y `avisosEquipo`. Rechaza claves extra, incluido `premium`/`userId`. Actualización y evento `consentEvents` comparten commit condicional del perfil. Si se repite un estado ya aplicado no genera otro evento. Son preferencias de avisos del servicio, **no consentimiento universal ni permiso para publicidad**. Se conservan los defaults de avisos existentes; valores almacenados inválidos no se interpretan como permiso.
+PATCH `/api/me/preferences` admite exclusivamente booleanos `recordatoriosCuidados` y `avisosEquipo`. Rechaza claves extra, incluido `premium`/`userId`. Actualización y evento `consentEvents` comparten commit condicional del perfil. Si se repite un estado ya aplicado no genera otro evento. Son preferencias de avisos del servicio, no consentimiento universal ni permiso para publicidad. Se conservan los defaults de avisos existentes; valores almacenados inválidos no se interpretan como permiso.
 
 La UI usa el valor confirmado por servidor. Al desactivar cuidados ejecuta `clear()` local directamente, sin un segundo GET; al habilitar sincroniza nuevamente. El programador de recordatorios y el envío manual consultan la preferencia/cuenta. También se comprueba antes de mostrar un push en primer plano. Otros dispositivos actualizan sus avisos locales cuando abren/sincronizan la app; no se pueden retirar notificaciones que el proveedor ya aceptó o el sistema operativo ya presentó. No es revocación de permisos del sistema operativo.
 
