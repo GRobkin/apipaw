@@ -19,6 +19,11 @@ ini_set('display_errors', '0');
 ini_set('log_errors', '1');
 error_reporting(E_ALL);
 
+// No anunciar la versión de PHP en cada respuesta (X-Powered-By).
+if (!headers_sent()) {
+    header_remove('X-Powered-By');
+}
+
 // Autoloader propio en vez de Composer.
 //
 // El runtime de PHP en Vercel es comunitario (vercel-php) y su paso de
