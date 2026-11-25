@@ -137,6 +137,20 @@ $guard = 0; $stats = ['completadas' => 0];
 while ($stats['completadas'] === 0 && $guard++ < 100) $stats = $service->runPending(2);
 delCheck($authCalls === ['a'] && delExists($memory, 'users/b') && !delExists($memory, 'users/a'), 'runPending no completo el borrado de A sin afectar a B');
 
+// 8b. Un fallo permanente al borrar no se traga en silencio: queda en el resultado del programador.
+[$memory, $db] = delFixture();
+$service = new AccountDeletionService($db, static function (string $uid): void { throw new RuntimeException("Permiso denegado para $uid (fixture)."); });
+$service->start($recent);
+$jobKey = 'accountDeletionJobs/' . PawLife\Privacy\AccountLifecycle::key('a');
+$guard = 0; $stats = ['errores' => []];
+while ($stats['errores'] === [] && $guard++ < 100) {
+    $stats = $service->runPending(2);
+    $memory->put($jobKey, array_replace($memory->records[$jobKey]['data'], ['lease' => null, 'leaseHasta' => null]));
+}
+delCheck($stats['completadas'] === 0 && $stats['pendientes'] >= 1, 'El borrado con Auth roto no debia completarse');
+delCheck(count($stats['errores']) === 1 && str_contains($stats['errores'][0], 'RuntimeException') && str_contains($stats['errores'][0], 'Permiso denegado'), 'Debia informar el motivo del fallo');
+delCheck(strlen($stats['errores'][0]) <= 200, 'El motivo debe quedar acotado');
+
 // 9. La firma del programador va atada a la ruta: la de recordatorios no sirve para borrar cuentas.
 $options = ['private_key_bits' => 2048, 'private_key_type' => OPENSSL_KEYTYPE_RSA];
 $cnf = dirname(PHP_BINARY) . '/extras/ssl/openssl.cnf';

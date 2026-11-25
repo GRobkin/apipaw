@@ -64,12 +64,21 @@ final class AccountDeletionService
     /** Worker has no dependency on a surviving Firebase Auth token. */
     public function runPending(int $maximum = 2): array
     {
-        $stats = ['procesadas' => 0, 'completadas' => 0, 'pendientes' => 0];
+        $stats = ['procesadas' => 0, 'completadas' => 0, 'pendientes' => 0, 'errores' => []];
         foreach ($this->db->queryPage('accountDeletionJobs', ['estado' => 'pendiente'], null, min(3, max(1, $maximum)))['documents'] as $job) {
             $uid = $job['data']['userId'] ?? null;
             if (!is_string($uid)) continue;
             try { $result = $this->resume($uid); $stats['procesadas']++; $stats[$result['estado'] === 'completa' ? 'completadas' : 'pendientes']++; }
-            catch (\Throwable) { $stats['pendientes']++; }
+            catch (\Throwable $error) {
+                $stats['pendientes']++;
+                // El borrado se reintenta en cada ejecucion. Si el fallo es permanente (indice o permiso
+                // que falta en produccion) y no queda registrado, el job espera para siempre y el
+                // programador igual ve "exito". Se anota el motivo, sin el uid, para poder diagnosticarlo.
+                $motivo = (new \ReflectionClass($error))->getShortName() . ': '
+                    . substr((string) preg_replace('/\s+/', ' ', (strlen($uid) >= 8 ? str_replace($uid, '[uid]', $error->getMessage()) : $error->getMessage())), 0, 160);
+                if (count($stats['errores']) < 3) $stats['errores'][] = $motivo;
+                error_log('AccountDeletion runPending: ' . $motivo);
+            }
         }
         return $stats;
     }
