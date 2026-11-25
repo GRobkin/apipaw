@@ -1391,7 +1391,8 @@ input:focus,textarea:focus,select:focus {
 @keyframes orbit-trace {from {stroke-dashoffset:2400}to {stroke-dashoffset:0}}
 @media(max-width:1000px) {
   .dispatch-toolbar {grid-template-columns:minmax(0,1fr);gap:12px}
-  .recipient-dock {grid-column:1;width:min(460px,100%);justify-self:center}
+  .audience-mode {grid-column:1;width:100%;max-width:460px;justify-self:center}
+  .recipient-dock {grid-column:1;width:100%;max-width:460px;justify-self:center}
   .canvas-tools {grid-column:1;padding-top:0}
 }
 @media(max-width:850px) {
